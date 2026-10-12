@@ -12,3 +12,7 @@ WinRT.Runtime.dll / CsWinRT: CsWinRT-MIT.txt; https://github.com/microsoft/CsWin
 Windows OCR is provided by the installed Windows language components; the application does not bundle language recognition models.
 .NET 8 Windows Desktop Runtime is a system prerequisite and is not bundled.
 This package does not bundle ONLYOFFICE source, binaries, or a spreadsheet editor.
+Markdig 1.4.0
+License: BSD-2-Clause
+Source: https://github.com/xoofx/markdig/tree/56e9c238584a44a169f174c881855c049768634c
+License text: Markdig-BSD-2-Clause.txt

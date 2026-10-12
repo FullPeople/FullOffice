@@ -39,7 +39,7 @@ public static class Program
                 using var process=Process.GetCurrentProcess();File.WriteAllText(args[2],JsonSerializer.Serialize(new{Engine="PDFium 7999 + .NET 8 / WPF",Pages=info!.Pages,Bookmarks=info.Bookmarks.Count,FileBytes=new FileInfo(path).Length,BitmapWidth=1200,Measurements=measurements,Jumps=jumps,AnnotationPersistence= persisted,AnnotationPixelsChanged=visible,AnnotationCopy=savedPath,OriginalUnchanged=originalUnchanged,CancellationPassed=cancellationPassed,ProcessWorkingSetBytes=process.WorkingSet64,Scope="Bitmap-ready timings exclude desktop launch, WPF first paint and storage cold-cache control. Synthetic workload; real-file acceptance pending."},jsonOptions));return 0;
             }catch(Exception ex){File.WriteAllText(args[2],JsonSerializer.Serialize(new{error=ex.ToString()},jsonOptions));return 1;}
         }
-        string? file=args.FirstOrDefault(a=>a.EndsWith(".pdf",StringComparison.OrdinalIgnoreCase));string? smoke=args.Length>=3&&(args[0]=="--ui-smoke"||args[0]=="--ui-probe")?args[2]:null;
+        string? file=args.FirstOrDefault(DocumentFormats.Supported);string? smoke=args.Length>=3&&(args[0]=="--ui-smoke"||args[0]=="--ui-probe")?args[2]:null;
         string? features=args.Length>=3&&args[0]=="--feature-probe"?args[2]:null;
         var application=new Application();application.DispatcherUnhandledException+=(_,e)=>{MessageBox.Show(e.Exception.Message,"FlowOffice",MessageBoxButton.OK,MessageBoxImage.Information);e.Handled=true;};application.Run(new WorkspaceWindow(file,smoke,args.Length>0&&args[0]=="--ui-probe",features,args));return 0;
     }

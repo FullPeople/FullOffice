@@ -1,4 +1,4 @@
-name: Windows PDF kernel
+name: Windows document workspace
 on: [push, pull_request, workflow_dispatch]
 permissions:
   contents: read
@@ -25,7 +25,7 @@ jobs:
         run: |
           $exe = Join-Path $PWD 'artifacts/app/FullOffice.exe'
           $fixture = Join-Path $PWD 'tests/fixtures/feature-fixture.pdf'
-          foreach ($mode in @('saving','revision','workspace','feature')) {
+          foreach ($mode in @('saving','revision','workspace','feature','text')) {
             $out = Join-Path $PWD ('artifacts/' + $mode)
             $process = Start-Process $exe -ArgumentList @('--' + $mode + '-probe',$fixture,$out) -PassThru
             if (-not $process.WaitForExit(55000)) { Stop-Process -Id $process.Id; throw 'Owned probe timed out' }
