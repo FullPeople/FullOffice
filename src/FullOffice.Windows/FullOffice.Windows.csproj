@@ -30,6 +30,8 @@
   <ItemGroup>
     <PackageReference Include="Markdig" Version="1.4.0" />
     <Resource Include="Assets/icon-64.png" />
+    <EmbeddedResource Include="Assets/ONLYOFFICE-logo.svg" LogicalName="FullOffice.ONLYOFFICELogo" />
+    <None Include="../../licenses/ONLYOFFICE-AGPL-3.0.txt;../../licenses/ONLYOFFICE-NOTICE.txt;../../licenses/CC-BY-SA-4.0.txt" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="PDFsharp" Version="6.2.4" />
     <None Include="pdfium.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

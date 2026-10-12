@@ -1,0 +1,73 @@
+{
+  "release": "ONLYOFFICE DesktopEditors v9.4.0",
+  "sdk": "6bd2051287a496ac1504214caca69a5729625696",
+  "core": "b18715ae811aaa5cd9dae2dd9a4b9412d38b8b7b",
+  "headers": 13,
+  "files": [
+    {
+      "Path": "core/DesktopEditor/common/base_export.h",
+      "SHA256": "acd4247950f2e48f16cb8a98c42eae3ac38c6e1952cea83cf591f633d46717f8",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/core/b18715ae811aaa5cd9dae2dd9a4b9412d38b8b7b/DesktopEditor/common/base_export.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/applicationmanager.h",
+      "SHA256": "2b629ebff181ed7f4ba7e4ec00591675ff83653a6892962e351ca35f4533cd8a",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/applicationmanager.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/applicationmanager_events.h",
+      "SHA256": "52f3c4710d399cd54bdbf6b0d9e68617de35a2f190209eff20ba30aef90b5f11",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/applicationmanager_events.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/base.h",
+      "SHA256": "eedb5847bcf86bbc926c88a18c6dcb275c3fc6723706ec3ff5a737fab107e4c0",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/base.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/cefapplication.h",
+      "SHA256": "5e56ef3fc6842aab45e49be156b2ad75f3bedefa54327f2dc02644988f904ad9",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/cefapplication.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/cefview.h",
+      "SHA256": "7b310a795df082ec755da463f16744e747e65ddc30d08a41c634b1b8bfea5e32",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/cefview.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/keyboardchecker.h",
+      "SHA256": "97a5ea90e6c10aa4a2e947208647b9a3b006617faa91137f7fa8dfe85b3e19e4",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/keyboardchecker.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/keychain.h",
+      "SHA256": "13b822164addd156de879b7e8365fbb75d0f229376d28f0107f5231034b6dfe0",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/keychain.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/mac_application.h",
+      "SHA256": "81791377f5300104755b83cb990974f3be910589348c0b430440ce8cb374eef3",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/mac_application.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/mac_cefview.h",
+      "SHA256": "a5fb7c2d3ab6767d7453fb6246f4a7f8bca5ea19a7675edaa17b171ea79cfe3b",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/mac_cefview.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/mac_cefviewmedia.h",
+      "SHA256": "ba02a2151e9be6bfc27991807988f2786e71bbab1dc235d3a925c7d5c21a5681",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/mac_cefviewmedia.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/nsascprinter.h",
+      "SHA256": "dc7168da81c5d1b88a1534a48d4d402328dd7a861c88f9264abe6f9c981ef1a7",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/nsascprinter.h"
+    },
+    {
+      "Path": "desktop-sdk/ChromiumBasedEditors/lib/include/spellchecker.h",
+      "SHA256": "70bf71567f9b72745896507cb7a7e53d56770509078f53aec233aa13d7f63982",
+      "URL": "https://raw.githubusercontent.com/ONLYOFFICE/desktop-sdk/6bd2051287a496ac1504214caca69a5729625696/ChromiumBasedEditors/lib/include/spellchecker.h"
+    }
+  ]
+}

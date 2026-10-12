@@ -9,7 +9,8 @@ public static class DocumentFormats
 {
     static readonly HashSet<string> text = new(StringComparer.OrdinalIgnoreCase) { ".md", ".markdown", ".txt", ".log", ".json", ".yaml", ".yml" };
     public static bool IsText(string path) => text.Contains(Path.GetExtension(path));
-    public static bool Supported(string path) => IsText(path) || Path.GetExtension(path).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
+    public static bool IsOffice(string path) => Path.GetExtension(path).Equals(".docx", StringComparison.OrdinalIgnoreCase) || Path.GetExtension(path).Equals(".xlsx", StringComparison.OrdinalIgnoreCase);
+    public static bool Supported(string path) => IsText(path) || IsOffice(path) || Path.GetExtension(path).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
 }
 public sealed partial class WorkspaceWindow
 {
@@ -22,18 +23,33 @@ public sealed partial class WorkspaceWindow
         var existing = editors.FirstOrDefault(v => v.FilePath.Equals(path, StringComparison.OrdinalIgnoreCase));
         if (existing != null) { SelectEditor(existing); return existing; }
         if (!File.Exists(path)) { ShowHome(); homeStatus.Text = "找不到这个文件，可能已移动或删除。"; return null; }
-        var view = new TextDocumentView(this, path);
+        EditorDocumentView view = DocumentFormats.IsOffice(path) ? new OfficeDocumentView(this, path) : new TextDocumentView(this, path);
         view.Changed = () => EditorChanged(view);
         view.SelectRequested = () => SelectEditor(view);
+        view.WorkspaceCommandRequested = command => { _ = RunEditorCommand(view, command); };
         editors.Add(view); readerSurface.Children.Add(view); SelectEditor(view);
         recent.Record(new() { Path = path }, true); RefreshRecent();
         await view.Ready; if (!editors.Contains(view)) return null;
         EditorChanged(view); return view;
     }
+    async Task RunEditorCommand(EditorDocumentView view, string command)
+    {
+        if (activeEditor != view || closingBusy || closingApproved) return;
+        try {
+            switch (command) {
+                case "TAB_NEXT": CycleDocuments(false); break;
+                case "TAB_PREVIOUS": CycleDocuments(true); break;
+                case "CLOSE_TAB": await CloseEditor(view); break;
+                case "OPEN_FILES": await OpenFilesDialog(); break;
+                case "HOME": ShowHome(); break;
+                case "CLOSE_WORKSPACE": Close(); break;
+            }
+        } catch (Exception error) { MessageBox.Show(this, error.Message, "FullOffice", MessageBoxButton.OK, MessageBoxImage.Information); }
+    }
     void EditorChanged(EditorDocumentView view)
     {
         if (!editors.Contains(view)) return;
-        if (activeEditor == view) { saveButton.IsEnabled = view.Ready.IsCompleted && !view.IsSaving; Title = Path.GetFileName(view.FilePath) + " · FullOffice"; }
+        if (activeEditor == view) { saveButton.IsEnabled = view.CanSave; Title = Path.GetFileName(view.FilePath) + " · FullOffice"; }
         RefreshTabs();
     }
     void DeactivateEditors()
@@ -48,7 +64,7 @@ public sealed partial class WorkspaceWindow
         foreach (var pdf in readers) pdf.Visibility = Visibility.Collapsed;
         DeactivateEditors(); activeEditor = view; view.Visibility = Visibility.Visible;
         homeSurface.Visibility = Visibility.Collapsed;
-        saveButton.IsEnabled = view.Ready.IsCompleted && !view.IsSaving;
+        saveButton.IsEnabled = view.CanSave;
         Title = Path.GetFileName(view.FilePath) + " · FullOffice"; RefreshTabs(); view.Activate();
     }
     async Task<bool> CloseEditor(EditorDocumentView view)

@@ -14,6 +14,13 @@ Windows OCR is provided by the installed Windows language components; the applic
 Framework-dependent developer builds require the runtime on the target system.
 Microsoft .NET runtime license and third-party notices are retained in the package.
 This package does not bundle ONLYOFFICE source, binaries, or a spreadsheet editor.
+The development branch additionally contains an independent AGPL native Office host.
+Its source and pinned upstream notices are in src/FullOffice.OfficeEngine.Native.
+ONLYOFFICE-AGPL-3.0.txt and ONLYOFFICE-NOTICE.txt contain the retained terms.
+The original ONLYOFFICE SVG logo is unmodified, copyright Ascensio System SIA;
+it is licensed under CC BY-SA 4.0, with text in CC-BY-SA-4.0.txt.
+The public 0.2.0 package remains PDF/Markdown/text-only; development runtime
+staging is documented separately and must not be mistaken for a public release.
 Markdig 1.4.0
 License: BSD-2-Clause
 Source: https://github.com/xoofx/markdig/tree/56e9c238584a44a169f174c881855c049768634c

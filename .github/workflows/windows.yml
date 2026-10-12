@@ -27,6 +27,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Native helper configuration failed' }
           cmake --build .cache/distribution-build --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { throw 'Native helper build failed' }
+      - name: Compile pinned native Office API bridge
+        shell: pwsh
+        run: |
+          cmake -S src/FullOffice.OfficeEngine.Native -B .cache/office-api-compile -DENGINE_COMPILE_ONLY=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Office API configuration failed' }
+          cmake --build .cache/office-api-compile --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Office API compile failed' }
       - name: Verify installation boundaries and authenticated updates
         shell: pwsh
         run: |

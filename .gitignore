@@ -8,3 +8,5 @@ work/
 .DS_Store
 .release-signing/
 *.dpapi
+**/__pycache__/
+*.pyc

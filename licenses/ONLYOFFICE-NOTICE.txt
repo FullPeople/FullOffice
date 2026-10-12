@@ -1,0 +1,14 @@
+FullOffice native Office host
+
+This directory is licensed under GNU AGPL version 3; see LICENSE.
+ONLYOFFICE SDK headers retain their original copyright and additional notices,
+including product logo retention, no trademark grant, and GUI asset licensing
+under CC BY-SA 4.0. Those notices remain applicable to the upstream components.
+
+Upstream: https://github.com/ONLYOFFICE/desktop-sdk
+Exact SDK revision: 6bd2051287a496ac1504214caca69a5729625696
+Exact core revision: b18715ae811aaa5cd9dae2dd9a4b9412d38b8b7b
+
+The C++ host runs separately from the FullOffice Windows application.
+Installed runtime binaries and import libraries are not included in this source.
+The currently published FullOffice 0.2.0 package does not contain this runtime.
