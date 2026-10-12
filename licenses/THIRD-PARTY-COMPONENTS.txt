@@ -19,7 +19,7 @@ Its source and pinned upstream notices are in src/FullOffice.OfficeEngine.Native
 ONLYOFFICE-AGPL-3.0.txt and ONLYOFFICE-NOTICE.txt contain the retained terms.
 The original ONLYOFFICE SVG logo is unmodified, copyright Ascensio System SIA;
 it is licensed under CC BY-SA 4.0, with text in CC-BY-SA-4.0.txt.
-The public 0.2.0 package remains PDF/Markdown/text-only; development runtime
+The validated 0.2.0 candidate package remains PDF/Markdown/text-only; development runtime
 staging is documented separately and must not be mistaken for a public release.
 Markdig 1.4.0
 License: BSD-2-Clause

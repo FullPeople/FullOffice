@@ -1,6 +1,6 @@
 # FullOffice
 
-FullOffice 是正在开发的桌面办公软件。当前开源代码包含 Windows PDF 阅读器、Markdown 和文本编辑器，以及安装、卸载和签名更新组件。开发版已接入 DOCX 和 XLSX 原生编辑器，完成实际编辑、公式重算与原文件保存检查；公开 0.2.0 安装包仍只包含 PDF、Markdown 和文本。完整编辑发行与 macOS 仍在开发。
+FullOffice 是正在开发的桌面办公软件。当前开源代码包含 Windows PDF 阅读器、Markdown 和文本编辑器，以及安装、卸载和签名更新组件。开发版已接入 DOCX 和 XLSX 原生编辑器，完成实际编辑、公式重算与原文件保存检查；已验证的 0.2.0 候选安装包仍只包含 PDF、Markdown 和文本。完整编辑发行与 macOS 仍在开发。
 
 ## 当前可运行的能力
 

@@ -12,6 +12,6 @@ third-party code or assets.
 - Other bundled dependencies: the original license texts and notices in
   `licenses/` and the PDFium license directories.
 
-The currently published 0.2.0 binary does not contain the Office editing runtime.
+The currently validated 0.2.0 candidate binary does not contain the Office editing runtime.
 An app-local development runtime is a separate candidate whose corresponding
 source and third-party distribution documentation must accompany its release.

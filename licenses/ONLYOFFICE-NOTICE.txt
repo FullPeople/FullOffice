@@ -11,4 +11,4 @@ Exact core revision: b18715ae811aaa5cd9dae2dd9a4b9412d38b8b7b
 
 The C++ host runs separately from the FullOffice Windows application.
 Installed runtime binaries and import libraries are not included in this source.
-The currently published FullOffice 0.2.0 package does not contain this runtime.
+The currently validated FullOffice 0.2.0 candidate package does not contain this runtime.
