@@ -2,6 +2,7 @@
 from pathlib import Path
 import argparse
 import json
+import re
 import subprocess
 import time
 import uuid
@@ -12,9 +13,11 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--product", choices=["DesktopDice", "MusicBoard"], required=True)
 parser.add_argument("--package-version", help="Candidate archive and installer suffix; product version is checked independently")
+parser.add_argument("--product-version", help="Expected executable version, independent of the package suffix")
 options = parser.parse_args()
 product = options.product
-version = "0.2.0" if product == "DesktopDice" else "0.3.0"
+version = options.product_version or ("0.2.0" if product == "DesktopDice" else "0.3.0")
+if not re.fullmatch(r"\d+\.\d+\.\d+", version): parser.error("product version must have three numeric components")
 package_version = options.package_version or version
 repository = root.parent / product
 package = repository / "dist" / (product + "-" + package_version + "-windows-x64")
@@ -55,7 +58,8 @@ if product == "DesktopDice":
     checks["InstalledExecutableVersionInfoMatches"] = actual == version
 else:
     version_result = subprocess.run([str(main), "--version"], capture_output=True, timeout=15)
-    checks["InstalledExecutableReportsCorrectVersion"] = version_result.returncode == 0 and version.encode() in version_result.stdout
+    checks["InstalledExecutableReportsCorrectVersion"] = version_result.returncode == 0 and bool(
+        re.search(r"(?<![\d.])" + re.escape(version) + r"(?![\d.])", version_result.stdout.decode("utf-8", errors="replace")))
 protected = output / "user-document.txt"
 protected.write_text("keep user data", encoding="utf-8")
 if product == "DesktopDice":

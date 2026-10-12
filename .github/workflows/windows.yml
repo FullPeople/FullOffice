@@ -13,13 +13,6 @@ jobs:
       - name: Build
         shell: pwsh
         run: dotnet publish src/FullOffice.Windows/FullOffice.Windows.csproj -c Release -r win-x64 --self-contained false -o artifacts/app
-      - name: Install Chinese OCR test prerequisites
-        shell: pwsh
-        run: |
-          foreach ($capability in @('Language.Basic~~~zh-CN~0.0.1.0','Language.OCR~~~zh-CN~0.0.1.0')) {
-            $state = Get-WindowsCapability -Online -Name $capability
-            if ($state.State -ne 'Installed') { Add-WindowsCapability -Online -Name $capability -ErrorAction Stop }
-          }
       - name: Build native installation and update helpers
         shell: pwsh
         run: |
@@ -40,6 +33,14 @@ jobs:
           foreach ($check in @('verify_distribution.py','verify_update_signatures.py','verify_update_versions.py')) {
             python ('tools/' + $check)
             if ($LASTEXITCODE -ne 0) { throw ('Native distribution check failed: ' + $check) }
+          }
+      - name: Install Chinese OCR test prerequisites
+        timeout-minutes: 15
+        shell: pwsh
+        run: |
+          foreach ($capability in @('Language.Basic~~~zh-CN~0.0.1.0','Language.OCR~~~zh-CN~0.0.1.0')) {
+            $state = Get-WindowsCapability -Online -Name $capability
+            if ($state.State -ne 'Installed') { Add-WindowsCapability -Online -Name $capability -ErrorAction Stop }
           }
       - name: Save, interaction and feature probes
         shell: pwsh
