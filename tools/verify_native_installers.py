@@ -11,11 +11,14 @@ import win32api
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument("--product", choices=["DesktopDice", "MusicBoard"], required=True)
-product = parser.parse_args().product
+parser.add_argument("--package-version", help="Candidate archive and installer suffix; product version is checked independently")
+options = parser.parse_args()
+product = options.product
 version = "0.2.0" if product == "DesktopDice" else "0.3.0"
+package_version = options.package_version or version
 repository = root.parent / product
-package = repository / "dist" / (product + "-" + version + "-windows-x64")
-installer = repository / "dist" / (product + "-" + version + "-Setup-windows-x64.exe")
+package = repository / "dist" / (product + "-" + package_version + "-windows-x64")
+installer = repository / "dist" / (product + "-" + package_version + "-Setup-windows-x64.exe")
 output = root / "artifacts/native-installer-tests" / (product + "-" + uuid.uuid4().hex)
 output.mkdir(parents=True)
 installed = output / "安装目录"
@@ -45,7 +48,7 @@ if not checks["SingleFileInstallsFullProduct"]:
     print(json.dumps(report), flush=True)
     raise RuntimeError("Single-file installation failed before registration")
 with winreg.OpenKey(winreg.HKEY_CURRENT_USER, registry) as key:
-    checks["VersionRegistered"] = winreg.QueryValueEx(key, "DisplayVersion")[0] == version
+    checks["VersionRegistered"] = winreg.QueryValueEx(key, "DisplayVersion")[0] == package_version
 if product == "DesktopDice":
     info = win32api.GetFileVersionInfo(str(main), "\\")
     actual = ".".join(str(number) for number in (info["FileVersionMS"] >> 16, info["FileVersionMS"] & 65535, info["FileVersionLS"] >> 16))
