@@ -90,6 +90,8 @@ bool extract_bundle(const std::uint8_t* bytes, const std::size_t length,
             error = "Archive filename is truncated or contains an embedded null"; return false;
         }
         std::string name(filename.data(), filename.size() - 1);
+        const bool directory = info.m_is_directory != 0 || name.ends_with('/') || name.ends_with('\\');
+        if (directory && info.m_uncomp_size != 0) { error = "Archive directory contains unexpected data"; return false; }
         while (!name.empty() && (name.back() == '/' || name.back() == '\\')) name.pop_back();
         if (!relative_name(name.c_str(), relative, error)) return false;
         std::wstring folded = relative.native();
@@ -99,7 +101,7 @@ bool extract_bundle(const std::uint8_t* bytes, const std::size_t length,
             error = "Archive exceeds the extraction size limit"; return false;
         }
         total += info.m_uncomp_size;
-        entries.push_back({index, relative, info.m_uncomp_size, info.m_is_directory != 0});
+        entries.push_back({index, relative, info.m_uncomp_size, directory});
     }
     ULARGE_INTEGER free{};
     if (!GetDiskFreeSpaceExW(destination.parent_path().c_str(), &free, nullptr, nullptr) || free.QuadPart < total + 64ULL * 1024 * 1024) {
@@ -115,7 +117,10 @@ bool extract_bundle(const std::uint8_t* bytes, const std::size_t length,
         if (!ancestors_safe(destination, entry.relative)) { error = "Staging directory was replaced by a link"; return false; }
         const auto path = destination / entry.relative;
         std::filesystem::create_directories(entry.directory ? path : path.parent_path(), status);
-        if (status || !ancestors_safe(destination, entry.relative)) { error = "Cannot create archive directory"; return false; }
+        if (status || !ancestors_safe(destination, entry.relative)) {
+            const auto name = entry.relative.generic_u8string();
+            error = "Cannot create archive directory: " + std::string(name.begin(), name.end()) + " error=" + std::to_string(status.value()); return false;
+        }
         if (entry.directory) continue;
         File file;
         file.value = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);

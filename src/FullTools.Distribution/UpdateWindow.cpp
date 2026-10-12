@@ -6,6 +6,7 @@
 #include <tlhelp32.h>
 #include <objbase.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -74,7 +75,7 @@ bool process_running(const std::filesystem::path& executable) {
 }
 std::filesystem::path product_executable() {
     const wchar_t* name = product == "MusicBoard" ? L"MusicBoard.exe" : product == "DesktopDice" ? L"DesktopDice.exe" : L"FullOffice.exe";
-    return install_root / L"current" / name;
+    return product == "DesktopDice" ? install_root / name : install_root / L"current" / name;
 }
 void check() {
     std::string envelope, error;
@@ -232,11 +233,22 @@ int wmain(int argc, wchar_t** argv) {
     }
     if ((product != "FullOffice" && product != "MusicBoard" && product != "DesktopDice") || current_version.empty()) return 2;
     if (install_root.empty()) {
-        if (self().parent_path().filename() != L"current") {
+        bool installed = false;
+        if (product == "DesktopDice") {
+            PWSTR local = nullptr;
+            if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local))) {
+                const auto expected = std::filesystem::path(local) / L"Programs" / L"DesktopDice";
+                installed = _wcsicmp(self().parent_path().c_str(), expected.c_str()) == 0;
+                if (installed) install_root = expected;
+                CoTaskMemFree(local);
+            }
+        } else if (self().parent_path().filename() == L"current") {
+            installed = true; install_root = self().parent_path().parent_path();
+        }
+        if (!installed) {
             if (!background) MessageBoxW(nullptr, L"便携版请从官网下载新版。安装版支持在这里检查和安装更新。", L"软件更新", MB_OK | MB_ICONINFORMATION);
             return 2;
         }
-        install_root = self().parent_path().parent_path();
     }
     std::error_code filesystem_error;
     if (install_root.is_relative() || !std::filesystem::is_regular_file(product_executable(), filesystem_error) || filesystem_error) return 2;

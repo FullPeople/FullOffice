@@ -28,6 +28,7 @@ for index, (name, entries, accepted) in enumerate([
     ("device", [("NUL.txt", b"bad")], False),
     ("duplicates", [("readme.txt", b"a"), ("README.TXT", b"b")], False),
     ("long-traversal", [("safe/" * 110 + "../../outside.txt", b"bad")], False),
+    ("nested-directories", [("assets/", b""), ("assets/fonts/", b""), ("assets/fonts/test.txt", b"kept")], True),
 ]):
     source = out / (name + ".zip")
     with zipfile.ZipFile(source, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -37,7 +38,8 @@ for index, (name, entries, accepted) in enumerate([
     result = subprocess.run([str(probe), str(source), str(destination)], capture_output=True, text=True)
     checks[name] = (result.returncode == 0) == accepted
     if accepted:
-        checks["UnicodeBytesPreserved"] = (destination / entries[0][0]).read_bytes() == b"original"
+        if name == "unicode": checks["UnicodeBytesPreserved"] = (destination / entries[0][0]).read_bytes() == b"original"
+        else: checks["NestedDirectoryFilePreserved"] = (destination / "assets/fonts/test.txt").read_bytes() == b"kept"
 checks["NoOutsideWrite"] = not (out.parent / "outside.txt").exists()
 package = out / "package"
 package.mkdir()

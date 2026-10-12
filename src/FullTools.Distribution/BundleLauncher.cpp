@@ -23,7 +23,9 @@ std::mutex message_mutex;
 std::wstring final_message;
 std::thread worker;
 std::filesystem::path install_root;
+std::filesystem::path default_install_root;
 std::filesystem::path test_shortcut;
+std::filesystem::path test_evidence;
 std::wstring test_registry;
 bool quiet = false;
 std::wstring quote(const std::wstring& text) {
@@ -85,8 +87,12 @@ void install() {
     const auto argument = [&](const wchar_t* name, const std::wstring& value) {
         return std::wstring(L" ") + name + (backend_uses_equals ? L"=" : L" ") + quote(value);
     };
-    command += argument(L"--package-root", package.wstring()) + argument(L"--install-root", install_root.wstring());
-    if (!backend_uses_equals) command += L" --no-launch";
+    if constexpr (backend_uses_equals) {
+        if (!test_registry.empty()) command += L" --diagnostic-install" + argument(L"--package-root", package.wstring()) +
+            argument(L"--install-root", install_root.wstring()) + argument(L"--evidence-root", test_evidence.wstring());
+    } else {
+        command += argument(L"--package-root", package.wstring()) + argument(L"--install-root", install_root.wstring()) + L" --no-launch";
+    }
     if (!test_registry.empty()) command += argument(L"--registry-subkey", test_registry);
     if (!test_shortcut.empty()) command += argument(L"--shortcut-path", test_shortcut.wstring());
     STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION process{};
@@ -111,6 +117,11 @@ void begin() {
         std::wstring text(static_cast<size_t>(length) + 1, L'\0'); GetWindowTextW(path_edit, text.data(), length + 1); text.resize(static_cast<size_t>(length)); install_root = text;
     }
     if (install_root.empty() || install_root.is_relative()) { result_code.store(1); if (!quiet) MessageBoxW(window, L"请选择完整的安装路径。", product_title, MB_OK | MB_ICONINFORMATION); return; }
+    if constexpr (backend_uses_equals) {
+        if (test_registry.empty() && install_root != default_install_root) {
+            result_code.store(1); if (!quiet) MessageBoxW(window, L"此产品使用固定的用户安装目录。", product_title, MB_OK | MB_ICONINFORMATION); return;
+        }
+    }
     progress.cancelled.store(false); phase.store(1);
     if (install_button) EnableWindow(install_button, FALSE);
     if (path_edit) EnableWindow(path_edit, FALSE);
@@ -129,7 +140,7 @@ LRESULT CALLBACK procedure(HWND owner, UINT message, WPARAM wparam, LPARAM lpara
         if (worker.joinable()) worker.join();
         std::wstring text; { std::lock_guard lock(message_mutex); text = final_message; }
         SetWindowTextW(status_label, text.c_str()); EnableWindow(close_button, TRUE); SetWindowTextW(close_button, L"关闭");
-        if (result_code.load() != 0) { EnableWindow(install_button, TRUE); EnableWindow(path_edit, TRUE); }
+        if (result_code.load() != 0) { EnableWindow(install_button, TRUE); EnableWindow(path_edit, !backend_uses_equals); }
         return 0;
     }
     if (message == WM_COMMAND && LOWORD(wparam) == 1002) { SendMessageW(owner, WM_CLOSE, 0, 0); return 0; }
@@ -149,13 +160,23 @@ int wmain(int argc, wchar_t** argv) {
     const DWORD length = GetEnvironmentVariableW(L"LOCALAPPDATA", data, 32768);
     if (length == 0 || length >= 32768) { CoUninitialize(); return 1; }
     install_root = std::filesystem::path(data) / L"Programs" / product_id;
+    if constexpr (backend_uses_equals) {
+        PWSTR local = nullptr;
+        if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local))) { CoUninitialize(); return 1; }
+        install_root = std::filesystem::path(local) / L"Programs" / product_id; CoTaskMemFree(local);
+    }
+    default_install_root = install_root;
     for (int i = 1; i < argc; ++i) {
         const std::wstring argument = argv[i];
         if (argument == L"--quiet") quiet = true;
         else if (argument == L"--install-root" && i + 1 < argc) install_root = argv[++i];
         else if (argument == L"--registry-subkey" && i + 1 < argc) test_registry = argv[++i];
         else if (argument == L"--shortcut-path" && i + 1 < argc) test_shortcut = argv[++i];
+        else if (argument == L"--evidence-root" && i + 1 < argc) test_evidence = argv[++i];
         else { CoUninitialize(); return 1; }
+    }
+    if constexpr (backend_uses_equals) {
+        if (!test_registry.empty() && (test_evidence.empty() || test_shortcut.empty())) { CoUninitialize(); return 1; }
     }
     if (quiet) { begin(); if (worker.joinable()) worker.join(); CoUninitialize(); return static_cast<int>(result_code.load()); }
     INITCOMMONCONTROLSEX controls{sizeof(controls), ICC_PROGRESS_CLASS}; InitCommonControlsEx(&controls);
@@ -175,6 +196,7 @@ int wmain(int argc, wchar_t** argv) {
     child(L"STATIC", product_title, 0, 28, 25, 610, 28, 0);
     child(L"STATIC", L"安装位置", 0, 28, 76, 610, 25, 0);
     path_edit = child(L"EDIT", install_root.c_str(), WS_BORDER | ES_AUTOHSCROLL | WS_TABSTOP, 28, 110, 610, 30, 1003);
+    if constexpr (backend_uses_equals) SendMessageW(path_edit, EM_SETREADONLY, TRUE, 0);
     progress_bar = child(PROGRESS_CLASSW, L"", 0, 28, 160, 610, 20, 1004); SendMessageW(progress_bar, PBM_SETRANGE32, 0, 100);
     status_label = child(L"STATIC", L"安装到当前用户目录，无需管理员权限。", 0, 28, 199, 610, 45, 1005);
     install_button = child(L"BUTTON", L"安装", BS_DEFPUSHBUTTON | WS_TABSTOP, 421, 263, 103, 32, 1001);
