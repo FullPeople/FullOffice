@@ -7,3 +7,5 @@
 *.ico binary
 *.png binary
 *.pdf binary
+tests/fixtures/*.manifest -text
+src/FullTools.Distribution/third_party/miniz/miniz.* -text

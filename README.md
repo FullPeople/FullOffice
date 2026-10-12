@@ -1,6 +1,6 @@
 # FullOffice
 
-FullOffice 是正在开发的桌面办公软件。当前开源代码包含可运行的 Windows PDF 阅读器与 Markdown、文本编辑器，后续整合文档、表格、安装与更新。尚未整合的能力不会列为已支持。
+FullOffice 是正在开发的桌面办公软件。当前开源代码包含 Windows PDF 阅读器、Markdown 和文本编辑器，以及安装、卸载和签名更新组件。DOCX、复杂 Excel 和 macOS 正在继续开发，尚未整合的能力不会列为已支持。
 
 ## 当前可运行的能力
 
@@ -24,7 +24,8 @@ FullOffice 是正在开发的桌面办公软件。当前开源代码包含可运
 | 复杂 Excel 完整编辑、公式重算与保存 | 必须完成真实文件验收，尚未整合 |
 | Markdown 与常见文本编辑、预览和保存 | 已实现基础功能，持续测试 |
 | 常见格式导入、导出 | 待编辑底层确定 |
-| 安装、卸载、默认应用与自动更新 | 待整合 |
+| Windows 安装、卸载和默认应用候选注册 | 已实现，自包含安装包通过独立安装与卸载检查 |
+| 更新检查、下载校验和安装界面 | 已实现，公共更新源和实际跨版本升级待验收 |
 | macOS 包体 | 待移植和运行验证 |
 
 ## 构建与验证
@@ -50,3 +51,19 @@ FullOffice 是正在开发的桌面办公软件。当前开源代码包含可运
 当前 PDF 原生操作在独立串行工作线程执行，打开时不进行整书文字或 OCR 扫描。UI 自动化与程序化网络检查不能代替物理输入延迟、真实双机网络、macOS 或手机设备验收。
 
 主体代码使用 MIT 许可证，Markdig 1.4.0 使用 BSD-2-Clause，完整第三方条款见 `licenses`。尚未引入完整 Office 编辑内核；后续引入时同时记录版本、源码和对应许可证。
+
+## Windows 安装与更新组件
+
+`src/FullTools.Distribution` 包含常规安装、卸载、默认应用候选注册、自解压安装界面和三个软件共用的更新组件。安装版包含 .NET 8 Windows Desktop Runtime；默认应用选择由用户在 Windows 设置中完成。
+
+更新清单使用 RSA-PSS/SHA-256 签名，下载只通过 HTTPS，并验证清单中的大小和 SHA-256。安装前再次校验并锁定文件。更新组件先复制到独立暂存目录运行，避免自身占用安装目录；用户须保存并退出主程序后才能安装更新。后台检查每日最多一次，启动界面显示后才触发。
+
+```powershell
+cmake -S src/FullTools.Distribution -B .cache/distribution-build
+cmake --build .cache/distribution-build --config Release
+python tools/verify_distribution.py
+python tools/verify_update_signatures.py
+python tools/verify_update_versions.py
+```
+
+签名测试使用公开测试夹具，不需要发布私钥。`tools/sign_update.py` 仅用于发布机器，私钥保存在仓库之外并使用 Windows DPAPI 保护；不得提交到源码或发布包。签名夹具中的测试版本不是实际发布版本。

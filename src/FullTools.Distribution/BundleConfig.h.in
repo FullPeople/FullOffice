@@ -1,0 +1,6 @@
+#pragma once
+inline constexpr wchar_t product_title[] = L"@PRODUCT_TITLE@";
+inline constexpr wchar_t product_id[] = L"@PRODUCT_ID@";
+inline constexpr wchar_t backend_name[] = L"@BACKEND_NAME@";
+inline constexpr char payload_sha256[] = "@PAYLOAD_SHA256@";
+inline constexpr bool backend_uses_equals = @BACKEND_USES_EQUALS@;

@@ -1,4 +1,4 @@
-Third-party components distributed with FlowOffice PDF v2.2
+Third-party components distributed with FullOffice 0.2.0
 
 PDFium native build 153.0.7999.0: existing BUILD_LICENSES and LICENSES subdirectories.
 PDFsharp 6.2.4: PDFsharp-MIT.txt; https://github.com/empira/PDFsharp/tree/v6.2.4
@@ -10,9 +10,15 @@ Microsoft.Windows.SDK.NET.Ref 10.0.19041.56: Windows-SDK-license.rtf
 WinRT.Runtime.dll / CsWinRT: CsWinRT-MIT.txt; https://github.com/microsoft/CsWinRT
 
 Windows OCR is provided by the installed Windows language components; the application does not bundle language recognition models.
-.NET 8 Windows Desktop Runtime is a system prerequisite and is not bundled.
+.NET 8 Windows Desktop Runtime is bundled in the self-contained Windows installer.
+Framework-dependent developer builds require the runtime on the target system.
+Microsoft .NET runtime license and third-party notices are retained in the package.
 This package does not bundle ONLYOFFICE source, binaries, or a spreadsheet editor.
 Markdig 1.4.0
 License: BSD-2-Clause
 Source: https://github.com/xoofx/markdig/tree/56e9c238584a44a169f174c881855c049768634c
 License text: Markdig-BSD-2-Clause.txt
+
+miniz 3.1.2 (Windows installation and update helper)
+Source: https://github.com/richgel999/miniz/tree/77d0dce8627735138c51770d1799a1ef48f2117d
+License text: miniz-LICENSE.txt

@@ -20,6 +20,20 @@ jobs:
             $state = Get-WindowsCapability -Online -Name $capability
             if ($state.State -ne 'Installed') { Add-WindowsCapability -Online -Name $capability -ErrorAction Stop }
           }
+      - name: Build native installation and update helpers
+        shell: pwsh
+        run: |
+          cmake -S src/FullTools.Distribution -B .cache/distribution-build
+          if ($LASTEXITCODE -ne 0) { throw 'Native helper configuration failed' }
+          cmake --build .cache/distribution-build --config Release --parallel 2
+          if ($LASTEXITCODE -ne 0) { throw 'Native helper build failed' }
+      - name: Verify installation boundaries and authenticated updates
+        shell: pwsh
+        run: |
+          foreach ($check in @('verify_distribution.py','verify_update_signatures.py','verify_update_versions.py')) {
+            python ('tools/' + $check)
+            if ($LASTEXITCODE -ne 0) { throw ('Native distribution check failed: ' + $check) }
+          }
       - name: Save, interaction and feature probes
         shell: pwsh
         run: |
@@ -35,5 +49,5 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: windows-pdf-kernel
+          name: windows-document-workspace
           path: artifacts

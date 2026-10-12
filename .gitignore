@@ -6,3 +6,5 @@ work/
 *.user
 *.suo
 .DS_Store
+.release-signing/
+*.dpapi
