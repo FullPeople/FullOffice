@@ -1,4 +1,5 @@
 from pathlib import Path
+import argparse
 import ctypes
 import json
 import os
@@ -13,7 +14,9 @@ output.mkdir(parents=True)
 installed = output / "安装程序"
 shortcut = output / "FullOffice-test.lnk"
 identity = "FullOffice-InstallerTest-" + uuid.uuid4().hex
-installer = root / ".cache/full-office-installer/Release/FullToolsInstaller.exe"
+parser = argparse.ArgumentParser()
+parser.add_argument("--installer", type=Path, default=root / ".cache/full-office-installer/Release/FullToolsInstaller.exe")
+installer = parser.parse_args().installer.resolve()
 checks = {}
 result = subprocess.run([str(installer), "--quiet", "--install-root", str(installed), "--shortcut-path", str(shortcut),
     "--registry-subkey", identity], timeout=90)

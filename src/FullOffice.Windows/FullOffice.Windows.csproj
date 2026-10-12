@@ -15,6 +15,18 @@
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <StartupObject>FlowOfficeLab.Program</StartupObject>
   </PropertyGroup>
+  <Target Name="PinSelfContainedRuntime" BeforeTargets="ProcessFrameworkReferences" Condition="'$(SelfContained)' == 'true'">
+  <ItemGroup>
+    <KnownFrameworkReference Update="Microsoft.NETCore.App;Microsoft.WindowsDesktop.App;Microsoft.WindowsDesktop.App.WPF"
+      Condition="'%(KnownFrameworkReference.TargetFramework)' == 'net8.0'">
+      <LatestRuntimeFrameworkVersion>8.0.31</LatestRuntimeFrameworkVersion>
+    </KnownFrameworkReference>
+    <KnownAppHostPack Update="Microsoft.NETCore.App"
+      Condition="'%(KnownAppHostPack.TargetFramework)' == 'net8.0'">
+      <AppHostPackVersion>8.0.31</AppHostPackVersion>
+    </KnownAppHostPack>
+  </ItemGroup>
+  </Target>
   <ItemGroup>
     <PackageReference Include="Markdig" Version="1.4.0" />
     <Resource Include="Assets/icon-64.png" />
