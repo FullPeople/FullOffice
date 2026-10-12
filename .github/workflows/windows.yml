@@ -1,0 +1,32 @@
+name: Windows PDF kernel
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9
+        with:
+          dotnet-version: 8.0.x
+      - name: Build
+        shell: pwsh
+        run: dotnet publish src/FullOffice.Windows/FullOffice.Windows.csproj -c Release -r win-x64 --self-contained false -o artifacts/app
+      - name: Save, interaction and feature probes
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'artifacts/app/FullOffice.exe'
+          $fixture = Join-Path $PWD 'tests/fixtures/feature-fixture.pdf'
+          foreach ($mode in @('saving','revision','workspace','feature')) {
+            $out = Join-Path $PWD ('artifacts/' + $mode)
+            $process = Start-Process $exe -ArgumentList @('--' + $mode + '-probe',$fixture,$out) -PassThru
+            if (-not $process.WaitForExit(55000)) { Stop-Process -Id $process.Id; throw 'Owned probe timed out' }
+            $report = Get-Content (Join-Path $out ($mode + '-probe.json')) -Raw | ConvertFrom-Json
+            if ($report.Passed -ne $true) { throw ('Probe failed: ' + $mode) }
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: windows-pdf-kernel
+          path: artifacts

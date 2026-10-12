@@ -1,0 +1,33 @@
+using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text.Json;
+using System.Windows;
+using System.Windows.Media.Imaging;
+
+namespace FlowOfficeLab;
+
+public static class EditingProbe
+{
+    static string Pixels(BitmapSource bitmap){var data=new byte[bitmap.PixelWidth*bitmap.PixelHeight*4];bitmap.CopyPixels(data,bitmap.PixelWidth*4,0);return Convert.ToHexString(SHA256.HashData(data));}
+    public static int Run(string path,string directory){
+        Directory.CreateDirectory(directory);string output=Path.Combine(directory,"edited-copy.pdf");var before=Program.HashFile(path);var timer=Stopwatch.StartNew();
+        try{
+            using var pdf=new PdfEngine();var info=pdf.OpenAsync(path).GetAwaiter().GetResult();var bookmarks=info.Bookmarks;var appearances=PdfOutlineStore.ReadAppearanceAsync(path,CancellationToken.None).GetAwaiter().GetResult();foreach(var style in appearances){var b=bookmarks[style.Index];b.ColorHex=style.Color;b.Bold=style.Bold;b.Italic=style.Italic;b.PresentationLoaded=true;}
+            int originalBookmarks=bookmarks.Count;int remove=bookmarks.FindLastIndex(b=>!b.HasChildren);string? deleted=remove>=0?bookmarks[remove].Title:null;if(remove>=0)bookmarks.RemoveAt(remove);
+            int target=Math.Min(info.Pages-1,Math.Max(1,info.Pages/2));var expected=new Point(.27,.63);var point=pdf.PagePointAsync(target,expected,CancellationToken.None).GetAwaiter().GetResult();var root=new Bookmark("验证：彩色目录",target,0,point.X,point.Y){ColorHex="#8151C8",Bold=true,PresentationLoaded=true,DestinationEdited=true,Expanded=false};var childPoint=pdf.PagePointAsync(0,new(.16,.31),CancellationToken.None).GetAwaiter().GetResult();var child=new Bookmark("验证：子书签",0,1,childPoint.X,childPoint.Y){ColorHex="#27855D",Italic=true,PresentationLoaded=true,DestinationEdited=true};bookmarks.Add(root);bookmarks.Add(child);BookmarkTree.Normalize(bookmarks);pdf.SetBookmarks(bookmarks);
+            int comparePage=info.Pages-1;if(comparePage==0)comparePage=target;string pixelsBefore=Pixels(pdf.RenderAsync(comparePage,1000,CancellationToken.None).GetAwaiter().GetResult().Image);
+            int noteCount=pdf.AnnotationsAsync(0,CancellationToken.None).GetAwaiter().GetResult().Count;
+            var reference=new HoverReference(Guid.NewGuid(),"验证：怪物数据",info.Pages-1,.1,.15,.7,.25);pdf.AddHoverAsync(0,new(.81,.2),reference).GetAwaiter().GetResult();pdf.AnnotateAsync(0,new(.7,.4),new(.7,.4),false,"验证：位置批注").GetAwaiter().GetResult();
+            bool originalRefused=false;try{pdf.SaveCopyAsync(path).GetAwaiter().GetResult();}catch(IOException){originalRefused=true;}
+            pdf.SaveCopyAsync(output).GetAwaiter().GetResult();using var verify=new PdfEngine();var reopened=verify.OpenAsync(output).GetAwaiter().GetResult();var restored=reopened.Bookmarks.Single(b=>b.Title==root.Title);var restoredPosition=verify.LocateBookmarkAsync(restored,CancellationToken.None).GetAwaiter().GetResult();bool positionPassed=restoredPosition!=null&&Math.Abs(restoredPosition.Value.X-expected.X)<.0002&&Math.Abs(restoredPosition.Value.Y-expected.Y)<.0002;
+            var restoredStyles=PdfOutlineStore.ReadAppearanceAsync(output,CancellationToken.None).GetAwaiter().GetResult();var restoredStyle=restoredStyles[restored.SourceIndex];bool colorPassed=restoredStyle.Color==root.ColorHex&&restoredStyle.Bold;
+            var hover=verify.HoverMarksAsync(0,CancellationToken.None).GetAwaiter().GetResult();bool hoverPassed=hover.Any(h=>h.Reference.Id==reference.Id&&h.Reference.Title==reference.Title&&h.Reference.Region==reference.Region);
+            bool annotationPassed=verify.AnnotationsAsync(0,CancellationToken.None).GetAwaiter().GetResult().Count==noteCount+2;
+            bool pixelsPassed=Pixels(verify.RenderAsync(comparePage,1000,CancellationToken.None).GetAwaiter().GetResult().Image)==pixelsBefore;
+            int sample=Math.Min(8,info.Pages-1);var raw=verify.ExtractTextAsync(sample,null,true,CancellationToken.None).GetAwaiter().GetResult();if(raw.Length<100)for(int p=1;p<Math.Min(info.Pages,15);p++){var candidate=verify.ExtractTextAsync(p,null,true,CancellationToken.None).GetAwaiter().GetResult();if(candidate.Length>=100){sample=p;raw=candidate;break;}}var flowed=verify.ExtractTextAsync(sample,null,false,CancellationToken.None).GetAwaiter().GetResult();File.WriteAllText(Path.Combine(directory,"copy-raw.txt"),raw);File.WriteAllText(Path.Combine(directory,"copy-smart.txt"),flowed);
+            bool recognized=OcrCopy.LooksBroken(flowed);if(recognized){flowed=OcrCopy.RecognizeAsync(verify.RenderAsync(sample,2200,CancellationToken.None).GetAwaiter().GetResult().Image,CancellationToken.None).GetAwaiter().GetResult();File.WriteAllText(Path.Combine(directory,"copy-smart.txt"),flowed);}File.WriteAllText(Path.Combine(directory,"copy-quality.json"),JsonSerializer.Serialize(new{SamplePage=sample+1,Recognized=recognized,ReadableChineseCharacters=flowed.Count(c=>c>='\u4E00'&&c<='\u9FFF'),RemainingGreekCyrillicCharacters=flowed.Count(c=>c>='\u0370'&&c<='\u052F'),CopiedCharacters=flowed.Length}));
+            bool passed=reopened.Pages==info.Pages&&reopened.Bookmarks.Count==originalBookmarks+(remove>=0?1:2)&&!restored.Expanded&&reopened.Bookmarks.Any(b=>b.Title==child.Title&&b.Depth==1)&&positionPassed&&colorPassed&&hoverPassed&&annotationPassed&&pixelsPassed&&originalRefused&&before.SequenceEqual(Program.HashFile(path));
+            File.WriteAllText(Path.Combine(directory,"edit-probe.json"),JsonSerializer.Serialize(new{Passed=passed,File=Path.GetFileName(path),Pages=info.Pages,OriginalBookmarks=originalBookmarks,SavedBookmarks=reopened.Bookmarks.Count,DeletedTitle=deleted,NewBookmarkPositionPassed=positionPassed,BookmarkColorAndStylePassed=colorPassed,ClosedBranchPersisted=!restored.Expanded,HoverReferencePersisted=hoverPassed,NotePersisted=annotationPassed,UneditedPagePixelsIdentical=pixelsPassed,PixelComparisonPage=comparePage+1,OriginalOverwriteRefused=originalRefused,OriginalUnchanged=before.SequenceEqual(Program.HashFile(path)),RawLineBreaks=raw.Count(c=>c=='\n'),SmartLineBreaks=flowed.Count(c=>c=='\n'),RawCharacters=raw.Length,SmartCharacters=flowed.Length,ElapsedMs=timer.Elapsed.TotalMilliseconds,PeakWorkingSetBytes=Process.GetCurrentProcess().PeakWorkingSet64,Scope="Actual-file editing, save/reopen, position and selected-page raster verification. This does not verify every pixel of every page or physical input latency."},new JsonSerializerOptions{WriteIndented=true}));return passed?0:1;
+        }catch(Exception ex){File.WriteAllText(Path.Combine(directory,"edit-probe.json"),JsonSerializer.Serialize(new{error=ex.ToString()}));return 1;}
+    }
+}
