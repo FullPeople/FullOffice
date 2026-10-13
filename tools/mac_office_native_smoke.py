@@ -112,7 +112,7 @@ def exercise(app,out,root,kind='docx'):
             (out/'independent-spreadsheet-values.json').write_text(json.dumps(values,indent=2))
         checks['SavedDocumentPackageValid']=saved.testzip() is None
     host_log=(out/'native-host.log').read_text(errors='replace')
-    checks['ActualNativeDirtyAndSaveEvents']='DIRTY 1' in host_log and 'SAVED OK' in host_log
+    checks['ActualNativeDirtyAndSaveEvents']='DIRTY 1' in host_log and 'SAVED OK' in host_log and 'DOCUMENT_CONTENT_READY' in host_log
     shutil.copy2(working,out/('saved-working-probe.'+kind))
     report={'Passed':len(checks)==(7 if kind=='docx' else 9) and all(checks.values()),'Checks':checks,'Format':kind,'HostExitCode':code,'OwnedPid':process.pid,
         'Scope':'Actual native ONLYOFFICE Mac editor, authored '+kind.upper()+' and dispatched AppKit input events, native save request and independent package verification; not physical keyboard, complex workbook or final FullOffice integration acceptance.'}

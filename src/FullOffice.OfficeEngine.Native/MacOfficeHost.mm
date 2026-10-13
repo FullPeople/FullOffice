@@ -15,6 +15,7 @@ static std::filesystem::path profile, document, resource, output;
 static std::mutex outputMutex;
 static std::atomic<bool> keyboardPending{false};
 static bool editProbe = false;
+static std::atomic<bool> documentReady{false}, savedObserved{false};
 static void emit(const std::string& text) { std::lock_guard<std::mutex> lock(outputMutex); std::cout << text << std::endl; }
 static std::wstring officeWideString(NSString* value) {
     NSData* bytes = [value dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
@@ -32,6 +33,12 @@ public:
                 });
             }
             else emit("OFFICE_EVENT " + std::to_string(event->m_nType));
+            if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_EXECUTE_COMMAND && event->m_pData) {
+                auto* data = static_cast<NSEditorApi::CAscExecCommand*>(event->m_pData);
+                if (data->get_Command() == L"FullOffice.Probe.Ready" && data->get_Param() == L"1") {
+                    if (!documentReady.exchange(true)) emit("DOCUMENT_CONTENT_READY");
+                }
+            }
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_MODIFY_CHANGED && event->m_pData) {
                 auto* data = static_cast<NSEditorApi::CAscDocumentModifyChanged*>(event->m_pData);
                 emit(data->get_Changed() ? "DIRTY 1" : "DIRTY 0");
@@ -39,6 +46,7 @@ public:
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_ONSAVE && event->m_pData) {
                 auto* data = static_cast<NSEditorApi::CAscDocumentOnSaveData*>(event->m_pData);
                 emit(data->get_IsCancel() ? "SAVED CANCEL" : "SAVED OK");
+                if (!data->get_IsCancel()) savedObserved = true;
             }
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_DESTROY && manager)
                 manager->GetApplication()->ExitMessageLoop();
@@ -96,7 +104,19 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
     [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
     wrapper = new CCefViewWrapper(parent);
     wrapper->resizeEvent();
-    if (editProbe) [NSTimer scheduledTimerWithTimeInterval:18 repeats:NO block:^(NSTimer*) {
+    __block bool inputStarted = false;
+    __block int readinessTicks = 0;
+    if (editProbe) [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
+        if (++readinessTicks > 75) { emit("DOCUMENT_READY_TIMEOUT"); [timer invalidate]; return; }
+        if (!documentReady) {
+            // Observe real editor state; never change document content through JavaScript.
+            editor->ExecuteInAllFrames("(function(){var e=(window.Asc&&window.Asc.editor)||window.editor;"
+                "if(e&&e.isDocumentLoadComplete===true&&window.AscDesktopEditor)"
+                "window.AscDesktopEditor.execCommand('FullOffice.Probe.Ready','1');})();", false);
+            return;
+        }
+        if (inputStarted) return;
+        inputStarted = true; [timer invalidate];
         [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES]; editor->focus(true);
         emit(std::string("INPUT_RESPONDER ") + [NSStringFromClass([[window firstResponder] class]) UTF8String]);
         if (document.extension() == ".xlsx") {
@@ -108,7 +128,7 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
             });
             return;
         }
-        NSPoint location = NSMakePoint(400, 330);
+        NSPoint location = NSMakePoint(400, std::max(180.0, parent.frame.size.height - 330.0));
         for (auto type : {NSEventTypeLeftMouseDown, NSEventTypeLeftMouseUp})
             [NSApp sendEvent:[NSEvent mouseEventWithType:type location:location modifierFlags:0
                 timestamp:[[NSProcessInfo processInfo] systemUptime] windowNumber:[window windowNumber] context:nil
@@ -129,7 +149,12 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
     for (NSView* child in [parent subviews])
         emit(std::string("CHILD_VIEW ") + [NSStringFromClass([child class]) UTF8String]);
     wrapper->resizeEvent();
-    [NSTimer scheduledTimerWithTimeInterval:35 repeats:NO block:^(NSTimer*) {
+    __block int captureTicks = 0;
+    [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
+        ++captureTicks;
+        if (editProbe && !savedObserved && captureTicks < 90) return;
+        if (!editProbe && captureTicks < 35) return;
+        [timer invalidate];
         NSString* target = [NSString stringWithUTF8String:(output / "native-office-window.png").c_str()];
         NSTask* capture = [[NSTask alloc] init];
         [capture setLaunchPath:@"/usr/sbin/screencapture"];
