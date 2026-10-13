@@ -69,10 +69,24 @@ def exercise(app,out,root,kind='docx',lazy=False):
         pdf=work/'lazy-probe.pdf'
         subprocess.run(['xcrun','swift',str(root/'tools/create_mac_probe_fixture.swift'),str(pdf)],check=True,timeout=60)
         pdf_hash=hashlib.sha256(pdf.read_bytes()).hexdigest()
+        lazy_started=time.time()
         with (out/'lazy-host.log').open('wb') as log:
             process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(pdf),str(bridge),str(resources),str(work/'lazy-profile'),str(working),str(out)],stdout=log,stderr=subprocess.STDOUT)
             try:code=process.wait(timeout=120)
             except subprocess.TimeoutExpired:process.kill();process.wait(timeout=15);code=process.returncode
+        crashes=[]
+        for diagnostic in (Path.home()/'Library/Logs/DiagnosticReports').glob('FullOfficeOfficeHost*.ips'):
+            if diagnostic.stat().st_mtime<lazy_started:continue
+            try:
+                raw=diagnostic.read_text();decoder=json.JSONDecoder();_,end=decoder.raw_decode(raw);body=json.loads(raw[end:].strip())
+                if body.get('pid')!=process.pid:continue
+                crash={'OwnedPid':process.pid,'Exception':body.get('exception'),'Termination':body.get('termination'),
+                    'Images':[{'name':i.get('name'),'path':i.get('path')} for i in body.get('usedImages',[])]}
+                thread=body.get('faultingThread')
+                if isinstance(thread,int):crash['Frames']=body['threads'][thread].get('frames')
+                crashes.append(crash)
+            except (ValueError,KeyError,IndexError):continue
+        (out/'lazy-owned-crashes.json').write_text(json.dumps(crashes,indent=2))
         report=json.loads((out/'lazy-host-report.json').read_text()) if (out/'lazy-host-report.json').is_file() else {'Passed':False,'Checks':{}}
         checks=report['Checks'];checks['ActualLazyAppClosesNormally']=code==0
         checks['AuthorPDFUnchanged']=hashlib.sha256(pdf.read_bytes()).hexdigest()==pdf_hash
