@@ -12,7 +12,10 @@ def exercise(app,out,root):
     if not (resources/'converter').is_dir():raise RuntimeError('Upstream converter directory differs')
     work=root/'.cache/mac-office-native';work.mkdir(parents=True,exist_ok=False)
     host=work/'FullOfficeOfficeHost.app';mac=host/'Contents/MacOS';mac.mkdir(parents=True)
-    (host/'Contents/Frameworks').symlink_to(frameworks,target_is_directory=True)
+    host_frameworks=host/'Contents/Frameworks';host_frameworks.mkdir()
+    for original in frameworks.iterdir():
+        if original.name.startswith('editors_helper') and original.suffix=='.app':continue
+        (host_frameworks/original.name).symlink_to(original,target_is_directory=original.is_dir())
     (host/'Contents/Resources').symlink_to(resources,target_is_directory=True)
     (host/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleName':'FullOfficeOfficeHost','CFBundleExecutable':'FullOfficeOfficeHost',
         'CFBundleIdentifier':'center.dnd.FullOffice.OfficeHostResearch','CFBundlePackageType':'APPL','NSHighResolutionCapable':True}))
@@ -23,10 +26,22 @@ def exercise(app,out,root):
         str(source/'MacOfficeHost.mm'),'-framework','ascdocumentscore','-framework','AppKit',
         *['-Wl,-rpath,'+str(path) for path in framework_roots],'-o',str(mac/'FullOfficeOfficeHost')]
     (out/'native-library-search-paths.json').write_text(json.dumps([p.relative_to(app).as_posix() for p in framework_roots],indent=2))
-    helper=host/'Contents/Frameworks/editors_helper.app/Contents/MacOS/editors_helper'
-    (out/'native-helper-path.json').write_text(json.dumps({'Exists':helper.is_file(), 'Resolved':str(helper.resolve()),
-        'Bytes':helper.stat().st_size if helper.is_file() else None},indent=2))
     subprocess.run(build,check=True,timeout=90)
+    helper_binary=work/'rebuilt-editors-helper'
+    helper_build=build.copy();helper_build[helper_build.index(str(source/'MacOfficeHost.mm'))]=str(source/'MacOfficeHelper.cpp')
+    helper_build[-1]=str(helper_binary)
+    subprocess.run(helper_build,check=True,timeout=90)
+    helpers=[]
+    for index,name in enumerate(['editors_helper','editors_helper (Renderer)','editors_helper (GPU)']):
+        original=frameworks/(name+'.app')
+        target=host_frameworks/(name+'.app');target_mac=target/'Contents/MacOS';target_mac.mkdir(parents=True)
+        info=plistlib.loads((original/'Contents/Info.plist').read_bytes())
+        info['CFBundleIdentifier']='center.dnd.FullOffice.OfficeHostResearch.Helper'+str(index)
+        (target/'Contents/Info.plist').write_bytes(plistlib.dumps(info))
+        __import__('shutil').copy2(helper_binary,target_mac/name)
+        subprocess.run(['codesign','--force','--sign','-',str(target)],check=True,timeout=30)
+        helpers.append({'Name':name,'Executable':str(target_mac/name),'SHA256':hashlib.sha256((target_mac/name).read_bytes()).hexdigest()})
+    (out/'native-helper-path.json').write_text(json.dumps({'RebuiltPinnedSDKHelper':True,'Helpers':helpers},indent=2))
     fixture=work/'native-probe.docx'
     with ZipFile(fixture,'w',ZIP_DEFLATED) as z:
         z.writestr('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
