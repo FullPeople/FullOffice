@@ -1,6 +1,6 @@
 """Verify upstream Mac runtime and inspect its real native editor integration ABI."""
 from pathlib import Path
-import hashlib,json,platform,subprocess,urllib.request,time
+import hashlib,json,platform,subprocess,urllib.request,time,shlex
 import argparse
 
 parser=argparse.ArgumentParser();parser.add_argument('--native-window',action='store_true')
@@ -44,6 +44,13 @@ try:
         deps=subprocess.run(['otool','-L',str(core)],capture_output=True,text=True,timeout=30)
         (out/f'core-{index}-dependencies.txt').write_text(deps.stdout,encoding='utf-8')
         report.setdefault('CoreSymbolCounts',[]).append(len(wanted))
+        if args.lazy_host:
+            # Inspect the actual pinned binary's close implementation rather
+            # than assuming the published headers describe every Mac path.
+            disassembly=subprocess.run(['lldb','--batch','-o','target create '+shlex.quote(str(core)),
+                '-o','disassemble -n "CAscApplicationManager::DestroyCefView(int, bool)" -c 120'],
+                capture_output=True,text=True,timeout=40)
+            (out/f'core-{index}-close-disassembly.txt').write_text(disassembly.stdout+disassembly.stderr,encoding='utf-8')
     (out/'report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(json.dumps({k:report[k] for k in ['RuntimeVerified','Architecture','BundleSignatureVerified','CoreLibraries','CoreSymbolCounts'] if k in report}),flush=True)
     if args.native_window:
