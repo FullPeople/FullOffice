@@ -8,7 +8,9 @@ var done=false,success=false
 NSWorkspace.shared.recycle([target]) {urls,error in
     DispatchQueue.main.async {
     success=error==nil && !FileManager.default.fileExists(atPath:target.path)
-    let record:[String:Any]=["Passed":success,"OriginalLocationRemoved":!FileManager.default.fileExists(atPath:target.path),"MovedToTrash":urls[target]?.path ?? ""]
+    var record:[String:Any]=["Passed":success,"OriginalLocationRemoved":!FileManager.default.fileExists(atPath:target.path),"MovedToTrash":urls[target]?.path ?? "",
+                           "EffectiveUserID":geteuid()]
+    if let error = error as NSError? {record["ErrorDomain"]=error.domain;record["ErrorCode"]=error.code;record["ErrorDescription"]=error.localizedDescription}
     try? JSONSerialization.data(withJSONObject:record,options:[.prettyPrinted,.sortedKeys]).write(to:URL(fileURLWithPath:CommandLine.arguments[1]))
     done=true
     }

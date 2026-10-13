@@ -1,6 +1,7 @@
 """Install, repair and recycle only this job's product using native macOS services."""
 from pathlib import Path
 import os,json,hashlib,subprocess,uuid,time,plistlib,sys
+from mac_sources import swift_target
 
 if os.environ.get('GITHUB_ACTIONS')!='true':raise RuntimeError('Requires disposable hosted macOS')
 root=Path(__file__).resolve().parents[1];artifacts=root/'artifacts'
@@ -36,7 +37,7 @@ sentinel_hash=digest(sentinel);checks={}
 def check(name,value):
     checks[name]=bool(value)
     (out/'report.json').write_text(json.dumps({'Passed':len(checks)==11 and all(checks.values()),'Checks':checks,
-        'Scope':'Actual native Installer fresh installation and same-version repair with verified previous-app backup, installed-bundle bytes/signature/PDF UI, native Trash uninstall and retained authored recovery data. Not signed update or notarized/physical-device acceptance.'},indent=2))
+        'Scope':'Actual native Installer fresh installation and same-version repair with verified previous-app backup, installed-bundle bytes/signature/PDF UI, administrator-authorized native Trash uninstall and retained authored recovery data. Not signed update, Finder authentication UI or notarized/physical-device acceptance.'},indent=2))
     if not value:raise RuntimeError(name)
 with (out/'install.log').open('wb') as log:result=subprocess.run(['sudo','-n','installer','-pkg',str(package),'-target','/'],stdout=log,stderr=subprocess.STDOUT,timeout=180)
 check('ActualNativeInstallerCompletes',result.returncode==0 and app.is_dir())
@@ -60,7 +61,11 @@ verified=backup is not None and subprocess.run(['sudo','-n','/usr/bin/env','GITH
 check('RepairRetainsExactPreviousApplicationBackup',verified)
 check('InstallAndRepairPreserveAuthoredRecoveryData',digest(sentinel)==sentinel_hash)
 trash=out/'native-trash.json'
-subprocess.run(['xcrun','swift',str(root/'tools/mac_recycle_installed.swift'),str(trash)],check=True,timeout=60)
+helper=out/'native-trash-helper'
+subprocess.run(['xcrun','swiftc',*swift_target(),str(root/'tools/mac_recycle_installed.swift'),'-o',str(helper)],check=True,timeout=60)
+with (out/'uninstall.log').open('wb') as log:
+    result=subprocess.run(['sudo','-n','/usr/bin/env','GITHUB_ACTIONS=true',str(helper),str(trash)],stdout=log,stderr=subprocess.STDOUT,timeout=60)
+if result.returncode!=0:raise RuntimeError('Administrator-authorized native Trash uninstall failed; retained report contains the actual service error')
 recycled=json.loads(trash.read_text())
 check('ActualNativeTrashUninstallRemovesInstalledLocation',recycled['Passed'] and not app.exists())
 check('NativeUninstallPreservesAuthoredRecoveryData',digest(sentinel)==sentinel_hash)
