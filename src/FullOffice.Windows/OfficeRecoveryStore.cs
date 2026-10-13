@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace FlowOfficeLab;
 
@@ -184,10 +186,34 @@ public sealed class OfficeRecoveryStore
                 else if (!entry.Equals(lockPath, StringComparison.OrdinalIgnoreCase)) files.Add(entry);
             }
         }
-        foreach (string file in files) { RejectLinks(file); File.Delete(file); }
-        foreach (string child in directories.Where(item => item != directory).OrderByDescending(item => item.Length)) Directory.Delete(child);
-        // Keep the lease until all document/profile content has been retired.
-        // A new lease at the final boundary prevents lock deletion or the nonrecursive directory deletion.
-        lease.Dispose(); File.Delete(lockPath); Directory.Delete(directory);
+        var handles = new Dictionary<string, SafeFileHandle>(StringComparer.OrdinalIgnoreCase);
+        try {
+            // Reserve deletion rights for the entire session before removing its recovery record.
+            // Sharing only deletion rejects existing readers/writers and prevents new ones during cleanup.
+            foreach (string path in files.Concat(directories)) {
+                RejectLinks(path);
+                var attributes = File.GetAttributes(path);
+                if ((attributes & FileAttributes.Directory) == 0 && (attributes & FileAttributes.ReadOnly) != 0)
+                    throw new IOException("恢复会话中存在只读内容，已保留完整记录。");
+                const uint deleteAccess = 0x00010000, shareDeletion = 0x00000004, openExisting = 3,
+                    backupSemantics = 0x02000000, openReparsePoint = 0x00200000;
+                var handle = CreateRetirementHandle(path, deleteAccess, shareDeletion, 0, openExisting, backupSemantics | openReparsePoint, 0);
+                if (handle.IsInvalid) {
+                    int error = Marshal.GetLastWin32Error(); handle.Dispose();
+                    throw new IOException("恢复会话仍被占用，已保留完整记录。", new System.ComponentModel.Win32Exception(error));
+                }
+                handles.Add(path, handle);
+            }
+            foreach (string file in files) { RejectLinks(file); File.Delete(file); handles[file].Dispose(); }
+            foreach (string child in directories.Where(item => item != directory).OrderByDescending(item => item.Length)) {
+                Directory.Delete(child); handles[child].Dispose();
+            }
+            // Keep the lease until all document/profile content has been retired.
+            lease.Dispose(); File.Delete(lockPath); Directory.Delete(directory); handles[directory].Dispose();
+        } finally { foreach (var handle in handles.Values) handle.Dispose(); }
     }
+    internal static bool RetirementBlockedBySharing(Exception error) => error is IOException &&
+        ((error.HResult & 0xffff) is 32 or 33 || error.InnerException is System.ComponentModel.Win32Exception { NativeErrorCode: 32 or 33 });
+    [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true)]
+    static extern SafeFileHandle CreateRetirementHandle(string path, uint access, uint share, nint security, uint creation, uint flags, nint template);
 }

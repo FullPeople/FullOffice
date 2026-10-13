@@ -235,16 +235,37 @@ public sealed class OfficeDocumentView : EditorDocumentView
     protected override void DiscardChanges() { discarded = true; }
     async Task CloseHostAfterExit()
     {
-        try { if (process != null) await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20)); }
+        bool normalExit = process == null;
+        try {
+            if (process != null) {
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20));
+                normalExit = process.ExitCode == 0;
+            }
+        }
         catch (TimeoutException) {
             // The process belongs exclusively to this document view; preserve its recovery files.
-            try { process?.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+            try {
+                process?.Kill(entireProcessTree: true);
+                if (process != null) await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            } catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception or TimeoutException) {
+                Debug.WriteLine("Owned editor shutdown remains incomplete: " + error.Message);
+            }
         }
         finally {
+            retireOnClose &= normalExit;
             await Dispatcher.InvokeAsync(() => host?.Dispose());
             sessionLease?.Dispose(); sessionLease = null;
             if (retireOnClose && session.Length > 0) {
-                try { recovery.Retire(session); }
+                try {
+                    await Task.Run(async () => {
+                        for (int attempt = 0; ; ++attempt) {
+                            try { recovery.Retire(session); break; }
+                            catch (Exception error) when (attempt < 19 && OfficeRecoveryStore.RetirementBlockedBySharing(error)) {
+                                await Task.Delay(100).ConfigureAwait(false);
+                            }
+                        }
+                    });
+                }
                 catch (Exception error) { Debug.WriteLine("Session retirement deferred: " + error.Message); }
             }
         }
