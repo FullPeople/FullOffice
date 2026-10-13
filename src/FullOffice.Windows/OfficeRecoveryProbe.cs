@@ -113,6 +113,26 @@ static class OfficeRecoveryProbe
                 checks["LinkedContentsCannotBeRetired"] = denied && File.ReadAllText(marker) == "keep";
                 Directory.Delete(linked);
             }
+            string blockedDirectory = Path.Combine(root, Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(blockedDirectory, "document"));
+            string blockedWorking = Path.Combine(blockedDirectory, "document", Path.GetFileName(source));
+            File.WriteAllText(blockedWorking, "preserved locked recovery");
+            store.InitializeAsync(blockedDirectory, source, 0, 0).GetAwaiter().GetResult();
+            store.SnapshotSavedAsync(blockedDirectory, blockedWorking).GetAwaiter().GetResult();
+            var blockedBefore = Directory.EnumerateFiles(blockedDirectory, "*", SearchOption.AllDirectories)
+                .ToDictionary(path => path, path => Convert.ToHexString(Program.HashFile(path)));
+            using (var blockedHandle = new FileStream(blockedWorking, FileMode.Open, FileAccess.Read, FileShare.Read)) {
+                denied = false; try { store.Retire(blockedDirectory); } catch (IOException) { denied = true; }
+                checks["LockedContentPreventsAnyRecoveryDeletion"] = denied && blockedBefore.All(item =>
+                    File.Exists(item.Key) && Convert.ToHexString(Program.HashFile(item.Key)) == item.Value);
+                checks["BlockedRetirementRemainsDiscoverable"] = store.FindAsync().GetAwaiter().GetResult().Entries
+                    .Any(item => item.Directory == blockedDirectory && item.HasSnapshot);
+            }
+            bool retiredAfterRelease = false;
+            if (checks["LockedContentPreventsAnyRecoveryDeletion"]) {
+                store.Retire(blockedDirectory); retiredAfterRelease = !Directory.Exists(blockedDirectory);
+            }
+            checks["RetirementSucceedsAfterBlockingHandleRelease"] = retiredAfterRelease;
             store.Retire(directory);
             checks["InactiveOwnedSessionRetired"] = !Directory.Exists(directory);
             checks["RetirementPreservesOriginalAndRecovery"] = File.ReadAllText(source) == "protected original" && File.ReadAllText(recovered) == "saved working snapshot";
