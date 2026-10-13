@@ -11,7 +11,7 @@ final class MacUpdateDownload: NSObject, URLSessionDataDelegate {
     private var session: URLSession?
     private var task: URLSessionDataTask?
     private var stream: FileHandle?
-    private var hash = SHA256()
+    private var packageDigest = SHA256()
     private var received: Int64 = 0
     private var failure: Error?
     private var lastProgress = Date.distantPast
@@ -68,7 +68,7 @@ final class MacUpdateDownload: NSObject, URLSessionDataDelegate {
         do {
             guard Int64(data.count) <= manifest.bytes - received else { throw OfficeSessionError.message("更新下载超出签名清单中的大小。") }
             guard let stream else { throw OfficeSessionError.message("更新下载文件已关闭。") }
-            try stream.write(contentsOf: data); hash.update(data: data); received += Int64(data.count)
+            try stream.write(contentsOf: data); packageDigest.update(data: data); received += Int64(data.count)
             if Date().timeIntervalSince(lastProgress) >= 0.1 || received == manifest.bytes {
                 lastProgress = Date(); let count = received
                 DispatchQueue.main.async { self.progress(count, self.manifest.bytes) }
@@ -80,7 +80,7 @@ final class MacUpdateDownload: NSObject, URLSessionDataDelegate {
             if let failure { throw failure }
             if let error { throw error }
             try stream?.synchronize(); try stream?.close(); stream = nil
-            guard received == manifest.bytes, hash.finalize().map({String(format: "%02x", $0)}).joined() == manifest.sha256 else {
+            guard received == manifest.bytes, packageDigest.finalize().map({String(format: "%02x", $0)}).joined() == manifest.sha256 else {
                 throw OfficeSessionError.message("更新安装包校验失败，未安装。请重新检查更新。")
             }
             finish(.success(package))
