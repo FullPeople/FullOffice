@@ -9,7 +9,7 @@
     <AssemblyName>FullOffice</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/FlowOffice.ico</ApplicationIcon>
-    <Version>0.3.3</Version>
+    <Version>0.3.4</Version>
     <Product>FullOffice</Product>
     <Description>FullOffice 文档、表格、演示文稿与 PDF 工作台</Description>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
