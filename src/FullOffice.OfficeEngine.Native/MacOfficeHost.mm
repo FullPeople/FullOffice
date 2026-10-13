@@ -22,7 +22,8 @@ class Listener final : public NSEditorApi::CAscCefMenuEventListener {
 public:
     void OnEvent(NSEditorApi::CAscCefMenuEvent* event) override {
         if (event) {
-            emit("OFFICE_EVENT " + std::to_string(event->m_nType));
+            if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_CHECK_KEYBOARD && manager) manager->CheckKeyboard();
+            else emit("OFFICE_EVENT " + std::to_string(event->m_nType));
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_DESTROY && manager)
                 manager->GetApplication()->ExitMessageLoop();
         }
@@ -55,6 +56,8 @@ static Listener listener;
     [parent setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [window setContentView:parent];
     wrapper = new CCefViewWrapper(parent);
+    wrapper->resizeEvent();
+    emit("EDITOR_BOUNDS " + std::to_string(wrapper->cef_width) + " " + std::to_string(wrapper->cef_height));
     editor = manager->CreateCefEditor(wrapper);
     if (!editor) { emit("EDITOR_CREATION_FAILED"); std::exit(4); }
     wrapper->m_pCefView = editor;
