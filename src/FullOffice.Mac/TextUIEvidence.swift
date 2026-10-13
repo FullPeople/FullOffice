@@ -13,6 +13,7 @@ func startTextUIEvidence(owner: Delegate, output: URL) {
             "OfficeLoaded":loaded(base.appendingPathComponent("Contents/Helpers/FullOfficeOfficeHost.app/Contents/Frameworks/ascdocumentscore.framework/ascdocumentscore")),
             "PreviewLoaded":loaded(base.appendingPathComponent("Contents/PlugIns/FullOfficeMarkdownPreview.bundle/Contents/MacOS/FullOfficeMarkdownPreview")),
             "Dirty":text.dirty,"Busy":text.busy,"OfficeWindows":owner.offices.count]
+        if let session = text.session { value["Source"] = session.source.path }
         text.inspectPreview { preview in
             if let bytes = preview.data(using:.utf8), let object = try? JSONSerialization.jsonObject(with: bytes) { value["Preview"] = object }
             if let bytes = try? JSONSerialization.data(withJSONObject: value,options:[.prettyPrinted,.sortedKeys]) { try? bytes.write(to: output.appendingPathComponent("runtime.json"),options:.atomic) }
