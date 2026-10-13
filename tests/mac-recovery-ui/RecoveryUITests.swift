@@ -36,13 +36,16 @@ final class RecoveryUITests: XCTestCase {
         let action = app.menuItems["恢复文档副本…"]
         try expect("ActualRecoveryMenuAvailable", action.waitForExistence(timeout: 10))
         action.click()
-        let recover = app.buttons["恢复副本…"]
+        // NSAlert duplicates its action in the Touch Bar. Select the actual
+        // dialog button, rather than an ambiguous application-wide query.
+        let recover = app.dialogs.buttons["恢复副本…"]
         try expect("ActualRecoveryChooserShown", recover.waitForExistence(timeout: 20))
-        let selector = app.popUpButtons.firstMatch
+        let selector = app.dialogs.popUpButtons.firstMatch
         try expect("ActualRecoveryEntryShowsOriginalFile", selector.exists && (selector.label.contains("original.docx") || String(describing: selector.value ?? "").contains("original.docx")))
         try app.screenshot().pngRepresentation.write(to: output.appendingPathComponent("recovery-list.png"))
         recover.click()
-        let save = app.buttons["Save"]
+        let save = app.dialogs.buttons["Save"]
+        try app.debugDescription.write(to: output.appendingPathComponent("save-panel-ui-tree.txt"), atomically: true, encoding: .utf8)
         try expect("ActualSystemSavePanelShown", save.waitForExistence(timeout: 20))
         try app.screenshot().pngRepresentation.write(to: output.appendingPathComponent("system-save-panel.png"))
         // Click the real system panel. Modern macOS disallows invoking ok:.

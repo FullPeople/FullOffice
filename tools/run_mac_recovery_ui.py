@@ -1,6 +1,6 @@
 """Run real menu, alert, system Save panel and native editor through XCTest."""
 from pathlib import Path
-import os,subprocess,shutil,sys
+import os,subprocess,shutil,sys,json
 
 if os.environ.get('GITHUB_ACTIONS')!='true':raise RuntimeError('Requires disposable hosted macOS')
 root=Path(__file__).resolve().parents[1]
@@ -20,3 +20,6 @@ register='/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchSer
 for bundle in [app,app/'Contents/Helpers/FullOfficeOfficeHost.app']:
     subprocess.run([register,'-f',str(bundle)],check=True,timeout=20)
 subprocess.run([build[0],'test-without-building',*build[1:],'-resultBundlePath',str(work/'results.xcresult')],check=True,timeout=360)
+report=json.loads((out/'report.json').read_text())
+if not report['Passed'] or len(report['Checks'])!=12 or not all(report['Checks'].values()):
+    raise RuntimeError('Actual recovery UI checks did not all execute and pass')
