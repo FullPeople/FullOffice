@@ -1,0 +1,30 @@
+name: Self-contained native Mac product application
+on:
+  push:
+    branches: [codex/macos-full-app-20261014]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Compile production UI before runtime download
+        run: python3 tools/typecheck_mac_office.py
+      - name: Build self-contained app and run actual DOCX and XLSX editing
+        run: python3 tools/inspect_mac_office_engine.py --product-host
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: mac-product-${{ matrix.runner }}-${{ github.run_id }}
+          path: |
+            artifacts/mac-office-abi/
+            artifacts/mac-product-ui/
+            artifacts/macos-full/bundle-manifest.json
+          if-no-files-found: warn

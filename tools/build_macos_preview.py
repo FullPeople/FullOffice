@@ -10,6 +10,7 @@ mac.mkdir(parents=True);resources.mkdir()
 sdk=subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=True).strip()
 subprocess.run(['xcrun','swiftc','-swift-version','5','-O','-sdk',sdk,'-target',platform.machine()+'-apple-macos13.0',
     str(root/'src/FullOffice.Mac/OfficeFileSession.swift'),str(root/'src/FullOffice.Mac/OfficeCoordinator.swift'),
+    str(root/'src/FullOffice.Mac/ProductProbe.swift'),
     str(root/'src/FullOffice.Mac/main.swift'),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True)
 iconset=out/'FullOffice.iconset';iconset.mkdir()
 icon=root/'src/FullOffice.Windows/Assets/icon-256.png'

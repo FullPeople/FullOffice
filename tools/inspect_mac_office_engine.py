@@ -5,7 +5,8 @@ import argparse
 
 parser=argparse.ArgumentParser();parser.add_argument('--native-window',action='store_true')
 parser.add_argument('--native-kind',choices=['docx','xlsx'],default='docx')
-parser.add_argument('--process-host',action='store_true');args=parser.parse_args()
+parser.add_argument('--process-host',action='store_true')
+parser.add_argument('--product-host',action='store_true');args=parser.parse_args()
 
 root=Path(__file__).resolve().parents[1]
 architecture=platform.machine()
@@ -27,6 +28,7 @@ with urllib.request.urlopen(urllib.request.Request(url,headers={'User-Agent':'Fu
 if count!=size or digest.hexdigest()!=expected:raise RuntimeError('Upstream runtime digest differs')
 mount=work/'mounted';mount.mkdir()
 subprocess.run(['hdiutil','attach','-readonly','-nobrowse','-mountpoint',str(mount),str(dmg)],check=True,timeout=90,stdout=subprocess.DEVNULL)
+detached=False
 try:
     apps=list(mount.glob('*.app'))
     if len(apps)!=1:raise RuntimeError('Unexpected upstream bundle count')
@@ -46,14 +48,23 @@ try:
         report.setdefault('CoreSymbolCounts',[]).append(len(wanted))
     (out/'report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(json.dumps({k:report[k] for k in ['RuntimeVerified','Architecture','BundleSignatureVerified','CoreLibraries','CoreSymbolCounts'] if k in report}),flush=True)
-    if args.native_window:
+    if args.product_host:
+        from build_macos_full import build
+        from mac_full_ui_smoke import run
+        product=build(app,root,root/'artifacts/macos-full')
+        subprocess.run(['hdiutil','detach',str(mount)],check=True,timeout=30)
+        detached=True
+        (out/'mount-cleanup.json').write_text(json.dumps({'Detached':True,'BeforeProductExecution':True,'ExitCode':0,'Attempts':1},indent=2))
+        run(product,root,root/'artifacts/mac-product-ui')
+    elif args.native_window:
         from mac_office_native_smoke import exercise
         exercise(app,out,root,args.native_kind,args.process_host)
 finally:
-    for attempt in range(10):
-        cleanup=subprocess.run(['hdiutil','detach',str(mount)],capture_output=True,text=True,timeout=15)
-        if cleanup.returncode==0:break
-        if cleanup.returncode!=16:break
-        time.sleep(1)
-    (out/'mount-cleanup.json').write_text(json.dumps({'Detached':cleanup.returncode==0,'ExitCode':cleanup.returncode,'Attempts':attempt+1,'Error':cleanup.stderr[:1000]},indent=2))
-    if cleanup.returncode:print(json.dumps({'OwnedMountCleanupDeferred':True,'ExitCode':cleanup.returncode}),flush=True)
+    if not detached:
+        for attempt in range(10):
+            cleanup=subprocess.run(['hdiutil','detach',str(mount)],capture_output=True,text=True,timeout=15)
+            if cleanup.returncode==0:break
+            if cleanup.returncode!=16:break
+            time.sleep(1)
+        (out/'mount-cleanup.json').write_text(json.dumps({'Detached':cleanup.returncode==0,'ExitCode':cleanup.returncode,'Attempts':attempt+1,'Error':cleanup.stderr[:1000]},indent=2))
+        if cleanup.returncode:print(json.dumps({'OwnedMountCleanupDeferred':True,'ExitCode':cleanup.returncode}),flush=True)

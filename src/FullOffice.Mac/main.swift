@@ -117,8 +117,10 @@ final class Delegate: NSObject, NSApplicationDelegate {
     var readers: [ReaderWindow] = []
     var offices: [OfficeCoordinator] = []
     var officeMessages = [ObjectIdentifier: String]()
+    var productProbe: ProductProbe?
     var officeRoot: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        if let probe = productProbe { return probe.output.appendingPathComponent("sessions", isDirectory: true) }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("FullOffice/EditingSessions", isDirectory: true)
     }
     func openDocument(_ selected: URL) {
@@ -130,7 +132,13 @@ final class Delegate: NSObject, NSApplicationDelegate {
                     guard let self, let office else { return }
                     self.officeMessages[ObjectIdentifier(office)] = message
                 }
-                office.onFailure = { message in NSAlert(error: OfficeSessionError.message(message)).runModal() }
+                office.onFailure = { [weak self] message in
+                    if let probe = self?.productProbe { probe.fail(message) }
+                    else { NSAlert(error: OfficeSessionError.message(message)).runModal() }
+                }
+                office.onExit = { [weak self, weak office] code in
+                    if let office { self?.productProbe?.completed(office, code: code) }
+                }
                 office.onOpen = { [weak self] in self?.openFile() }
                 office.onSaveAs = { [weak self, weak office] in
                     guard let self, let office, let session = office.session else { return }
@@ -139,8 +147,11 @@ final class Delegate: NSObject, NSApplicationDelegate {
                     panel.allowsOtherFileTypes = false
                     if panel.runModal() == .OK, let target = panel.url { office.requestSaveAs(to: target) }
                 }
-                office.open(selected)
-            } catch { NSAlert(error: error).runModal() }
+                office.open(selected, researchEdit: productProbe != nil)
+            } catch {
+                if let probe = productProbe { probe.fail(error.localizedDescription) }
+                else { NSAlert(error: error).runModal() }
+            }
             return
         }
         let reader = ReaderWindow()
@@ -166,6 +177,11 @@ final class Delegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
         edit.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         NSApp.mainMenu = menu
+        if CommandLine.arguments.contains("--office-ui-probe") {
+            do { productProbe = try ProductProbe(owner: self, arguments: CommandLine.arguments); productProbe?.start() }
+            catch { exit(2) }
+            return
+        }
         if CommandLine.arguments.contains("--ui-probe") { runProbe(); return }
         if readers.isEmpty {
             let reader = ReaderWindow(); reader.openDocument = { [weak self] in self?.openDocument($0) }; readers.append(reader); reader.showWindow(nil)
@@ -173,7 +189,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
-        if CommandLine.arguments.contains("--ui-probe") {
+        if CommandLine.arguments.contains("--ui-probe") || CommandLine.arguments.contains("--office-ui-probe") {
             probeStage("probe-launch-arguments-handled")
             sender.reply(toOpenOrPrint: .success)
             return
