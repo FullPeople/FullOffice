@@ -75,6 +75,8 @@ def exercise(app,out,root,kind='docx',lazy=False):
             try:code=process.wait(timeout=120)
             except subprocess.TimeoutExpired:process.kill();process.wait(timeout=15);code=process.returncode
         crashes=[]
+        for engine_log in (work/'lazy-profile').rglob('log.log'):
+            shutil.copy2(engine_log,out/'lazy-engine.log')
         for diagnostic in (Path.home()/'Library/Logs/DiagnosticReports').glob('FullOfficeOfficeHost*.ips'):
             if diagnostic.stat().st_mtime<lazy_started:continue
             try:

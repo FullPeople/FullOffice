@@ -1,6 +1,9 @@
 // FullOffice native Office bridge. GNU AGPL version 3; see LICENSE and NOTICE.txt.
 #import <AppKit/AppKit.h>
+#import <objc/runtime.h>
 #include <atomic>
+#include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <iostream>
 #include "mac_application.h"
@@ -17,7 +20,35 @@ std::wstring bridgeWideString(const char* text) {
     NSData* data = [value dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
     return std::wstring(static_cast<const wchar_t*>([data bytes]), [data length]/sizeof(wchar_t));
 }
-CAscApplicationManager* createManager() { return new CAscApplicationManager(); }
+// Use the SDK's external-loop contract when CEF is loaded after AppKit starts.
+// Its scheduling callbacks own the work timer; a periodic CefDoMessageLoopWork
+// call with the SDK's standard-loop settings leaves Chromium's nesting invalid.
+class AppKitOfficeLoop final : public IExternalMessageLoop {
+    NSTimer* timer = nil;
+public:
+    void Run() override { [NSApp run]; }
+    void Execute(void* message) override {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (manager) manager->ExternalMessageLoop_OnExecute(message);
+            else delete static_cast<int64_t*>(message);
+        });
+    }
+    void SetTimer(long delay) override {
+        KillTimer();
+        timer = [[NSTimer timerWithTimeInterval:std::max(0L, delay)/1000.0 repeats:NO block:^(NSTimer*) {
+            if (manager) manager->ExternalMessageLoop_OnTimeout();
+        }] retain];
+        [[NSRunLoop mainRunLoop] addTimer:timer forMode:NSRunLoopCommonModes];
+    }
+    void KillTimer() override { [timer invalidate]; [timer release]; timer=nil; }
+    void Exit() override { KillTimer(); }
+} appKitLoop;
+class AppKitOfficeManager final : public CAscApplicationManager {
+public:
+    bool IsExternalEventLoop() override { return true; }
+    IExternalMessageLoop* GetExternalMessageLoop() override { return &appKitLoop; }
+};
+CAscApplicationManager* createManager() { return new AppKitOfficeManager(); }
 class Listener final : public NSEditorApi::CAscCefMenuEventListener {
     void OnEvent(NSEditorApi::CAscCefMenuEvent* event) override {
         if (event) {
@@ -47,6 +78,11 @@ extern "C" int fo_office_initialize(const char* resources, const char* profile) 
         auto entry=root/"editors/web-apps/apps/api/documents/index.html";
         if (!root.is_absolute() || !user.is_absolute() || !std::filesystem::is_regular_file(entry)) return 0;
         std::filesystem::create_directories(user);
+        Class appClass=[NSApp class];
+        if (![NSApp respondsToSelector:@selector(isHandlingSendEvent)] ||
+            ![NSApp respondsToSelector:@selector(setHandlingSendEvent:)]) return 0;
+        class_addProtocol(appClass, @protocol(CefAppProtocol));
+        if (![NSApp conformsToProtocol:@protocol(CefAppProtocol)]) return 0;
         worker=[[NSAscApplicationWorker alloc] initWithCreator:&createManager];
         manager=[NSAscApplicationWorker getAppManager];
         auto& s=manager->m_oSettings;
@@ -79,7 +115,6 @@ extern "C" void fo_office_pump() {
         NSSize size=wrapper->m_pParent.frame.size;
         if (wrapper->cef_width!=(unsigned int)size.width || wrapper->cef_height!=(unsigned int)size.height) wrapper->resizeEvent();
     }
-    manager->GetApplication()->DoMessageLoopEvent();
 }
 extern "C" int fo_office_ready() {
     if (editor && !ready && !destroyed)
@@ -99,7 +134,6 @@ extern "C" void fo_office_shutdown() {
     manager->DestroyCefView(-1);
     NSDate* deadline=[NSDate dateWithTimeIntervalSinceNow:5];
     while (!destroyed && [deadline timeIntervalSinceNow]>0) {
-        manager->GetApplication()->DoMessageLoopEvent();
         [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:.01]];
     }
     [worker End]; manager=nullptr; editor=nullptr; wrapper=nullptr; worker=nil;
