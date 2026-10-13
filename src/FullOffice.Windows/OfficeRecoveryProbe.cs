@@ -125,7 +125,7 @@ static class OfficeRecoveryProbe
                 denied = false; try { store.Retire(blockedDirectory); } catch (IOException) { denied = true; }
                 checks["LockedContentPreventsAnyRecoveryDeletion"] = denied && blockedBefore.All(item =>
                     File.Exists(item.Key) && Convert.ToHexString(Program.HashFile(item.Key)) == item.Value);
-                checks["BlockedRetirementRemainsDiscoverable"] = store.FindAsync().GetAwaiter().GetResult().Entries
+                checks["BlockedRetirementRemainsDiscoverable"] = store.FindAsync().GetAwaiter().GetResult()
                     .Any(item => item.Directory == blockedDirectory && item.HasSnapshot);
             }
             bool retiredAfterRelease = false;
