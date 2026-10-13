@@ -1,6 +1,7 @@
 """Prepare the native Installer candidate only after full product checks pass."""
 from pathlib import Path
 import hashlib,json,os,platform,plistlib,shutil,subprocess
+from mac_sources import swift_target
 
 if platform.system()!='Darwin':raise RuntimeError('Requires native macOS packaging')
 root=Path(__file__).resolve().parents[1];artifacts=root/'artifacts'
@@ -8,6 +9,8 @@ for name,count in [('mac-product-ui',115),('mac-office-session-checks',55),('mac
     report=json.loads((artifacts/name/'report.json').read_text())
     checks=[value for item in report['Results'] for value in item['Checks'].values()] if 'Results' in report else list(report['Checks'].values())
     if not report['Passed'] or len(checks)!=count or not all(checks):raise RuntimeError('Incomplete product gate: '+name)
+updates=json.loads((artifacts/'mac-update-checks/report.json').read_text())
+if not updates['Passed'] or len(updates['Checks'])!=43 or not all(updates['Checks'].values()):raise RuntimeError('Incomplete signed update gate')
 app=artifacts/'macos-full/FullOffice.app'
 subprocess.run(['codesign','--verify','--deep','--strict',str(app)],check=True,timeout=90)
 bundle=json.loads((artifacts/'macos-full/bundle-manifest.json').read_text())
@@ -19,7 +22,7 @@ out=artifacts/'mac-package';out.mkdir(exist_ok=False)
 payload=out/'payload';payload.mkdir()
 subprocess.run(['ditto',str(app),str(payload/'FullOffice.app')],check=True,timeout=240)
 scripts=out/'scripts';scripts.mkdir()
-subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'src/FullOffice.Mac/InstallGuard.swift'),'-o',str(scripts/'FullOfficeInstallGuard')],check=True,timeout=90)
+subprocess.run(['xcrun','swiftc','-swift-version','5',*swift_target(),str(root/'src/FullOffice.Mac/InstallGuard.swift'),'-o',str(scripts/'FullOfficeInstallGuard')],check=True,timeout=90)
 preinstall=scripts/'preinstall';preinstall.write_text('#!/bin/bash\nset -eu\nSCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"\nexec "$SCRIPT_DIR/FullOfficeInstallGuard" "${3:-/}"\n')
 preinstall.chmod(0o755)
 components=out/'components.plist'

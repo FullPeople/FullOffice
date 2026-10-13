@@ -1,7 +1,7 @@
 """Build a self-contained native Mac candidate from the verified upstream runtime."""
 from pathlib import Path
 import hashlib,json,os,platform,plistlib,shutil,subprocess
-from mac_sources import full_sources
+from mac_sources import full_sources,swift_target
 from build_mac_markdown_preview import build as build_markdown_preview
 
 def digest(path):
@@ -27,7 +27,7 @@ def build(upstream,root,out):
     for path in framework_roots:
         relative=path.relative_to(upstream/'Contents')
         search.append('-Wl,-rpath,@executable_path/../'+relative.as_posix())
-    compile=['xcrun','clang++','-std=c++17','-fblocks','-D_MAC','-DDESKTOP_NO_USE_DYNAMIC_LIBRARY','-DQ_DECL_EXPORT=',
+    compile=['xcrun','clang++','-std=c++17','-fblocks','-mmacosx-version-min=13.0','-D_MAC','-DDESKTOP_NO_USE_DYNAMIC_LIBRARY','-DQ_DECL_EXPORT=',
         '-I'+str(source/'third_party/desktop-sdk/ChromiumBasedEditors/lib/include'),'-F'+str(host_frameworks),
         str(source/'MacOfficeHost.mm'),'-framework','ascdocumentscore','-framework','AppKit',*search,'-o',str(host_mac/'FullOfficeOfficeHost')]
     subprocess.run(compile,check=True,timeout=90)
@@ -47,7 +47,8 @@ def build(upstream,root,out):
         (target/'Contents/Info.plist').write_bytes(plistlib.dumps(info));shutil.copy2(helper,target_mac/name)
         subprocess.run(['codesign','--force','--sign','-',str(target)],check=True,timeout=30)
     sources=root/'src/FullOffice.Mac'
-    subprocess.run(['xcrun','swiftc','-swift-version','5','-O',*full_sources(root),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True,timeout=120)
+    subprocess.run(['xcrun','swiftc','-swift-version','5',*swift_target(),'-O',*full_sources(root),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True,timeout=120)
+    (out/'main-load-commands.txt').write_text(subprocess.check_output(['otool','-l',str(mac/'FullOffice')],text=True))
     build_markdown_preview(root,app)
     shutil.copy2(sources/'Assets/update-public-key.der', resources/'update-public-key.der')
     shutil.copy2(sources/'Assets/update-public-key-provenance.json', resources/'update-public-key-provenance.json')
