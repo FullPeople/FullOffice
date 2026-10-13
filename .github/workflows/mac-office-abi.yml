@@ -1,5 +1,7 @@
 name: Inspect verified macOS Office editing runtime
 on:
+  push:
+    branches: [codex/macos-office-engine-20261013]
   workflow_dispatch:
 permissions:
   contents: read
