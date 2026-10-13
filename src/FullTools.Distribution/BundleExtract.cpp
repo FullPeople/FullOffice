@@ -129,7 +129,9 @@ bool extract_bundle(const std::uint8_t* bytes, const std::size_t length,
         }
         if (entry.directory) continue;
         File file;
-        file.value = CreateFileW(io_path(path).c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
+        // Staging is private and uncommitted. Flush once after CRC and size validation,
+        // rather than forcing every decompressor chunk to the disk individually.
+        file.value = CreateFileW(io_path(path).c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file.value == INVALID_HANDLE_VALUE) {
             const auto name = entry.relative.generic_u8string();
             error = "Cannot create staged package file: " + std::string(name.begin(), name.end()) + " Win32=" + std::to_string(GetLastError()); return false;

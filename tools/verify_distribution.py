@@ -51,6 +51,15 @@ for index, (name, entries, accepted) in enumerate([
         elif name == "nested-directories": checks["NestedDirectoryFilePreserved"] = (destination / "assets/fonts/test.txt").read_bytes() == b"kept"
         else: checks["LongUnicodeResourceBytesPreserved"] = (destination / entries[0][0]).read_bytes() == b"kept"
 checks["NoOutsideWrite"] = not (out.parent / "outside.txt").exists()
+damaged = out / "damaged-content.zip"
+with zipfile.ZipFile(damaged, "w", zipfile.ZIP_STORED) as archive:
+    archive.writestr("checked.txt", b"AUTHORED_CRC_CONTENT_20261014")
+contents = bytearray(damaged.read_bytes())
+offset = contents.index(b"AUTHORED_CRC_CONTENT_20261014")
+contents[offset] ^= 1
+damaged.write_bytes(contents)
+result = subprocess.run([str(probe), str(damaged), str(out / "FullTools-stage-damaged")], capture_output=True)
+checks["CorruptedEntryCRCRefused"] = result.returncode != 0
 package = out / "package"
 package.mkdir()
 shutil.copy2(root / "artifacts/app/FullOffice.exe", package / "FullOffice.exe")
