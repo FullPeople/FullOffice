@@ -75,6 +75,7 @@ public sealed partial class PdfReaderView : UserControl
         PreviewKeyDown+=async(_,e)=>{if(e.OriginalSource is TextBox)return;if(e.Key==Key.Right||e.Key==Key.PageDown){e.Handled=true;await ShowPage(currentPage+1);}else if(e.Key==Key.Left||e.Key==Key.PageUp){e.Handled=true;await ShowPage(currentPage-1);}else if(e.Key==Key.Escape)SetMode(0);else if(e.Key==Key.O&&Keyboard.Modifiers.HasFlag(ModifierKeys.Control))await ChooseFile();else if(e.Key==Key.F&&Keyboard.Modifiers.HasFlag(ModifierKeys.Control)){search.Focus();search.SelectAll();}};
         scroll.PreviewMouseWheel+=async(_,e)=>{e.Handled=true;await HandleWheel(e.Delta,Keyboard.Modifiers.HasFlag(ModifierKeys.Control));};
         scroll.PreviewMouseDown+=(_,_)=>{ResetWheelGoal();SmoothScroll.Set(scroll,scroll.VerticalOffset);};
+        scroll.PreviewKeyDown+=(_,e)=>{if(e.OriginalSource is not TextBox&&e.Key is Key.Home or Key.End or Key.Up or Key.Down or Key.PageUp or Key.PageDown or Key.Space)ResetWheelGoal();};
         pageImage.MouseLeftButtonDown+=async(_,e)=>{
             if(currentFile==""||displayedPage!=currentPage||opening||saving)return;var p=e.GetPosition(pageImage);dragStart=new(p.X/pageImage.ActualWidth,p.Y/pageImage.ActualHeight);copyDrag=mode==0||mode==3;copyRegion=null;
             if(mode==2){var text=InputNote();if(text!=null)await AddAnnotation(dragStart,dragStart,false,text);}
@@ -134,7 +135,7 @@ public sealed partial class PdfReaderView : UserControl
         bool hasPreview=engine.TryGetPreview(page,out var preview),initialPositionApplied=false,destinationApplied=false;
         if(hasPreview)firstPreviewMs=display.Elapsed.TotalMilliseconds;pageImage.Source=preview?.Image;if(sharpWholePage&&preview!=null&&RasterQuality.TryGetDisplay(preview.Image,physicalWidth,physicalHeight,out var sharpPreview))pageImage.Source=sharpPreview;pageImage.Width=logicalWidth;pageImage.Height=logicalHeight;canvas.Width=logicalWidth;canvas.Height=logicalHeight;UpdateTagDisplays();
         pageImage.BeginAnimation(OpacityProperty,null);pageImage.Opacity=1;
-        SmoothScroll.Set(scroll,scroll.VerticalOffset);double earlyOffset=atBottom?double.MaxValue:samePage&&keepPosition?priorOffset*logicalHeight/Math.Max(1,priorHeight):0;
+        SmoothScroll.Set(scroll,scroll.VerticalOffset,fromWheel);double earlyOffset=atBottom?double.MaxValue:samePage&&keepPosition?priorOffset*logicalHeight/Math.Max(1,priorHeight):0;
         if(!samePage&&destination!=null&&engine.TryGetBookmarkPosition(destination,out var earlyPoint)&&earlyPoint!=null)earlyOffset=Math.Max(0,earlyPoint.Value.Y*logicalHeight+8);
         scroll.ScrollToVerticalOffset(earlyOffset);feedbackSynchronousMs=display.Elapsed.TotalMilliseconds;
         try{
@@ -144,7 +145,7 @@ public sealed partial class PdfReaderView : UserControl
             void Present(RenderedPage? frame,BitmapSource? displayImage=null){
                 if(frame!=null){presentedNativeWidth=frame.Width;pageImage.Source=displayImage??frame.Image;displayedPage=page;firstPreviewMs=firstPreviewMs==0?display.Elapsed.TotalMilliseconds:firstPreviewMs;}
                 scroll.UpdateLayout();
-                if(!initialPositionApplied){SmoothScroll.Set(scroll,atBottom?scroll.ScrollableHeight:samePage&&keepPosition?priorOffset*logicalHeight/Math.Max(1,priorHeight):0);initialPositionApplied=true;}
+                if(!initialPositionApplied){SmoothScroll.Set(scroll,atBottom?scroll.ScrollableHeight:samePage&&keepPosition?priorOffset*logicalHeight/Math.Max(1,priorHeight):0,fromWheel);initialPositionApplied=true;}
                 if(destination!=null&&!destinationApplied&&engine.TryGetBookmarkPosition(destination,out var point)&&point!=null){double offset=Math.Max(0,point.Value.Y*logicalHeight+8);if(samePage)SmoothScroll.To(scroll,offset);else SmoothScroll.Set(scroll,offset);if(destination.X!=null)scroll.ScrollToHorizontalOffset(Math.Max(0,point.Value.X*logicalWidth+8));destinationApplied=true;}
             }
             Present(preview);
