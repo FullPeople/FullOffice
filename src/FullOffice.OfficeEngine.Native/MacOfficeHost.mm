@@ -249,7 +249,9 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
             [NSApp sendEvent:[NSEvent mouseEventWithType:type location:location modifierFlags:0
                 timestamp:[[NSProcessInfo processInfo] systemUptime] windowNumber:[window windowNumber] context:nil
                 eventNumber:0 clickCount:1 pressure:1]];
-        nativeKey(@"\uF701", 125, NSEventModifierFlagCommand);
+        // The Word editor's End handler uses Ctrl+End for document end;
+        // Ctrl/Command+Down is not the same operation. Use actual key events.
+        nativeKey(@"\uF72B", 119, NSEventModifierFlagControl);
         nativeKey(@"\r", 36);
         inputProbeCharacter(@"MAC_NATIVE_EDIT_SAVED_20261013", 0);
     }];

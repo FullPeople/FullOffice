@@ -44,7 +44,9 @@ def run(app,root,out):
         with ZipFile(working) as saved:
             checks['SavedZIPValid']=saved.testzip() is None
             if kind=='docx':
-                typed='MAC_NATIVE_EDIT_SAVED_20261013' in ''.join(ET.fromstring(saved.read('word/document.xml')).itertext())
+                body=''.join(ET.fromstring(saved.read('word/document.xml')).itertext())
+                typed='MAC_NATIVE_EDIT_SAVED_20261013' in body
+                checks['OriginalBodyTextPreserved']='MAC_ENGINE_BODY_PROBE_20261013' in body
                 if scenario=='discard':checks['DiscardedTextAbsentFromOriginal']=not typed and hashlib.sha256(working.read_bytes()).hexdigest()==before
                 else:checks['NativeTypedTextActuallySaved']=typed
             else:
@@ -55,7 +57,7 @@ def run(app,root,out):
                 checks['FormulaActuallyRecalculated']=values['A3']=='12'
                 checks['OriginalFormulaPreserved']=cells['A3'].findtext('s:f',namespaces=ns)=='SUM(A1:A2)'
                 (case/'independent-values.json').write_text(json.dumps(values,indent=2))
-        expected=(20 if kind=='docx' else 22)+(3 if scenario else 0)
+        expected=(21 if kind=='docx' else 22)+(3 if scenario else 0)
         report['Passed']=report['Passed'] and len(checks)==expected and all(checks.values())
         report['ExitCode']=code;report['Format']=kind;report['CloseScenario']=scenario
         (case/'report.json').write_text(json.dumps(report,indent=2));reports.append(report)
