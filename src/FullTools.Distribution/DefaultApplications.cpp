@@ -17,7 +17,8 @@ constexpr std::array formats{
     Format{L".odt", L"Word", L"OpenDocument 文档", true},
     Format{L".ods", L"Spreadsheet", L"OpenDocument 工作簿", true},
     Format{L".odp", L"Presentation", L"OpenDocument 演示文稿", true},
-    Format{L".rtf", L"Word", L"RTF 文档", true}};
+    Format{L".rtf", L"Word", L"RTF 文档", true},
+    Format{L".csv", L"Spreadsheet", L"CSV 表格", true}};
 bool valid(const std::wstring& name) {
     return !name.empty() && name.size() < 100 && name.starts_with(L"FullOffice") &&
         std::all_of(name.begin(), name.end(), [](wchar_t c) { return std::iswalnum(c) || c == L'-' || c == L'.'; });
