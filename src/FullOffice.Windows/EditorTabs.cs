@@ -17,7 +17,7 @@ public static class DocumentFormats
         [".ods"] = ("application/vnd.oasis.opendocument.spreadsheet", "spreadsheet"),
         [".odp"] = ("application/vnd.oasis.opendocument.presentation", "presentation")
     };
-    public static bool IsOffice(string path) => office.ContainsKey(Path.GetExtension(path)) || openDocument.ContainsKey(Path.GetExtension(path));
+    public static bool IsOffice(string path) => office.ContainsKey(Path.GetExtension(path)) || openDocument.ContainsKey(Path.GetExtension(path)) || Path.GetExtension(path).Equals(".rtf", StringComparison.OrdinalIgnoreCase);
     public static bool TryOpenDocument(string path, out (string Mime, string Body) format) => openDocument.TryGetValue(Path.GetExtension(path), out format);
     public static string OfficeContentEntry(string path) => office.TryGetValue(Path.GetExtension(path), out string? entry)
         ? entry : throw new IOException("不支持这个文档格式。");

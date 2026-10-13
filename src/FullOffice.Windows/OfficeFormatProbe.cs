@@ -8,6 +8,24 @@ static class OfficeFormatProbe
 {
     public static void Check(string output, Dictionary<string, bool> checks)
     {
+        string rich = Path.Combine(output, "rich-text"); Directory.CreateDirectory(rich);
+        foreach (var (name, data) in new[] {
+            ("basic", "{\\rtf1\\ansi Text {\\b bold} \\u20013? \\u25991?}"),
+            ("escaped", "{\\rtf1 Literal \\{brace\\} and \\\\ slash \\'7b}"),
+            ("binary", "{\\rtf1{\\pict\\bin3 {\\}}}"),
+            ("large-ignored-parameter", "{\\rtf1\\unknown123456789012345678901234567890 Test}") }) {
+            string path = Path.Combine(rich, name + ".rtf"); File.WriteAllText(path, data, new UTF8Encoding(false));
+            byte[] before = Program.HashFile(path); OfficePackage.Validate(path, path);
+            checks["RichTextValidAndUnchanged" + name] = before.SequenceEqual(Program.HashFile(path));
+        }
+        foreach (var (name, data) in new[] {
+            ("wrong-header", "plain text"), ("truncated", "{\\rtf1{\\b missing}"),
+            ("bad-hex", "{\\rtf1\\'xz}"), ("short-binary", "{\\rtf1\\bin50 x}"),
+            ("negative-binary", "{\\rtf1\\bin-3 xyz}"), ("extra-root", "{\\rtf1 One}{Two}"),
+            ("wrong-version", "{\\rtf12 Wrong}") }) {
+            string path = Path.Combine(rich, name + ".rtf"); File.WriteAllText(path, data, new UTF8Encoding(false));
+            checks["RichTextMalformedRejected" + name] = Denied(() => OfficePackage.Validate(path, path));
+        }
         string root = Path.Combine(output, "open-document"); Directory.CreateDirectory(root);
         foreach (var (extension, mime, body) in new[] {
             (".odt", "application/vnd.oasis.opendocument.text", "text"),

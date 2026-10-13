@@ -7,6 +7,9 @@ static class OfficePackage
 {
     public static void Validate(string path, string documentPath)
     {
+        if (Path.GetExtension(documentPath).Equals(".rtf", StringComparison.OrdinalIgnoreCase)) {
+            RichTextPackage.Validate(path); return;
+        }
         if (DocumentFormats.TryOpenDocument(documentPath, out var format)) {
             ValidateOpenDocument(path, format); return;
         }
