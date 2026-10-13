@@ -162,20 +162,35 @@ final class Delegate: NSObject, NSApplicationDelegate {
             checks["TextSelectionAvailable"] = reader.pdfDocument?.page(at: 0)?.string?.contains("FullOffice fixture") == true
             reader.fitPage(); checks["FitPageHasValidScale"] = reader.pdf.scaleFactor.isFinite && reader.pdf.scaleFactor > 0
             reader.fitWidth(); checks["FitWidthHasValidScale"] = reader.pdf.scaleFactor.isFinite && reader.pdf.scaleFactor > 0
-            if let last = reader.pdfDocument?.page(at: 2) { reader.pdf.go(to: last) }
+            if let last = reader.pdfDocument?.page(at: 2) { reader.pdf.go(to: PDFDestination(page: last, at: CGPoint(x: 0, y: last.bounds(for: .mediaBox).maxY))) }
             checks["PageNavigationWorks"] = reader.pdf.currentPage.map { reader.pdfDocument?.index(for: $0) == 2 } ?? false
             checks["OwnedNativeWindowVisible"] = reader.window?.isVisible == true
         } catch { failure = String(describing: error) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
             probeStage("capture-and-report")
             do {
-                if let view = reader.window?.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
-                    view.cacheDisplay(in: view.bounds, to: bitmap)
-                    if let png = bitmap.representation(using: .png, properties: [:]) { try png.write(to: output.appendingPathComponent("window.png")) }
+                if let window = reader.window {
+                    let capture = Process()
+                    capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
+                    capture.arguments = ["-x", "-l", String(window.windowNumber), output.appendingPathComponent("window.png").path]
+                    try capture.run(); capture.waitUntilExit()
+                    if capture.terminationStatus != 0 { failure = "Native window capture failed: \(capture.terminationStatus)" }
                 }
                 checks["RenderedWindowCapture"] = FileManager.default.fileExists(atPath: output.appendingPathComponent("window.png").path)
-                let passed = failure == nil && checks.count == 8 && checks.values.allSatisfy { $0 }
+                var markerPixels = 0
+                if let image = NSBitmapImageRep(contentsOf: output.appendingPathComponent("window.png")), let window = reader.window {
+                    let ratio = CGFloat(image.pixelsWide) / window.frame.width
+                    let start = max(0, Int(reader.pdf.convert(.zero, to: nil).x * ratio) + 12)
+                    for y in Int(80 * ratio)..<max(Int(80 * ratio), image.pixelsHigh - 12) {
+                        for x in start..<max(start, image.pixelsWide - 12) {
+                            if let color = image.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB), color.redComponent < 0.4 && color.greenComponent < 0.4 && color.blueComponent > 0.7 { markerPixels += 1 }
+                        }
+                    }
+                }
+                checks["AuthoredPageMarkerActuallyVisible"] = markerPixels > 500
+                let passed = failure == nil && checks.count == 9 && checks.values.allSatisfy { $0 }
                 var report: [String: Any] = ["Passed": passed, "Checks": checks, "Architecture": ProcessInfo.processInfo.machineArchitecture,
+                    "VisiblePageMarkerPixels": markerPixels,
                     "Scope": "Owned macOS native PDFKit window and authored three-page PDF; read-only preview, no Office editing, installation, updates or real-user-document acceptance."]
                 if let failure { report["Failure"] = failure }
                 try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("report.json"))
