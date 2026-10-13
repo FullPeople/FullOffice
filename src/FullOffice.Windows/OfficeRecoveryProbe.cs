@@ -10,6 +10,7 @@ static class OfficeRecoveryProbe
         output = Path.GetFullPath(output); Directory.CreateDirectory(output);
         var checks = new Dictionary<string, bool>();
         try {
+            OfficeFormatProbe.Check(output, checks);
             foreach (string extension in new[] { ".docx", ".xlsx", ".pptx" }) {
                 string blank = Path.Combine(output, "blank" + extension); NewDocumentFiles.Write(blank, extension);
                 OfficePackage.Validate(blank, blank); checks["BlankPackageValid" + extension] = true;

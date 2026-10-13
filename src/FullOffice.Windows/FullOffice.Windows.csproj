@@ -9,11 +9,12 @@
     <AssemblyName>FullOffice</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets/FlowOffice.ico</ApplicationIcon>
-    <Version>0.3.2</Version>
+    <Version>0.3.3</Version>
     <Product>FullOffice</Product>
     <Description>FullOffice 文档、表格、演示文稿与 PDF 工作台</Description>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <StartupObject>FlowOfficeLab.Program</StartupObject>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
   </PropertyGroup>
   <Target Name="PinSelfContainedRuntime" BeforeTargets="ProcessFrameworkReferences" Condition="'$(SelfContained)' == 'true'">
   <ItemGroup>
