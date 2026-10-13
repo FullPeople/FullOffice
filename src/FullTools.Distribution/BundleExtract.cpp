@@ -11,6 +11,12 @@ namespace {
 struct Archive final { mz_zip_archive value{}; ~Archive() { if (value.m_pState) mz_zip_reader_end(&value); } };
 struct File final { HANDLE value = INVALID_HANDLE_VALUE; ~File() { if (value != INVALID_HANDLE_VALUE) CloseHandle(value); } };
 struct Sink final { HANDLE file; ExtractionProgress* progress; std::uint64_t written = 0; };
+std::wstring io_path(const std::filesystem::path& path) {
+    std::wstring full = std::filesystem::absolute(path).lexically_normal().native();
+    if (full.starts_with(L"\\\\?\\")) return full;
+    if (full.starts_with(L"\\\\")) return L"\\\\?\\UNC\\" + full.substr(2);
+    return L"\\\\?\\" + full;
+}
 size_t write_data(void* context, mz_uint64 offset, const void* bytes, size_t count) {
     auto& sink = *static_cast<Sink*>(context);
     if (sink.progress->cancelled.load() || offset != sink.written) return 0;
@@ -27,7 +33,7 @@ size_t write_data(void* context, mz_uint64 offset, const void* bytes, size_t cou
     return done;
 }
 bool reparse(const std::filesystem::path& path) {
-    const DWORD attributes = GetFileAttributesW(path.c_str());
+    const DWORD attributes = GetFileAttributesW(io_path(path).c_str());
     return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
 }
 bool relative_name(const char* text, std::filesystem::path& result, std::string& error) {
@@ -116,15 +122,18 @@ bool extract_bundle(const std::uint8_t* bytes, const std::size_t length,
         if (progress.cancelled.load()) { error = "Extraction cancelled"; return false; }
         if (!ancestors_safe(destination, entry.relative)) { error = "Staging directory was replaced by a link"; return false; }
         const auto path = destination / entry.relative;
-        std::filesystem::create_directories(entry.directory ? path : path.parent_path(), status);
+        std::filesystem::create_directories(io_path(entry.directory ? path : path.parent_path()), status);
         if (status || !ancestors_safe(destination, entry.relative)) {
             const auto name = entry.relative.generic_u8string();
             error = "Cannot create archive directory: " + std::string(name.begin(), name.end()) + " error=" + std::to_string(status.value()); return false;
         }
         if (entry.directory) continue;
         File file;
-        file.value = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
-        if (file.value == INVALID_HANDLE_VALUE) { error = "Cannot create staged package file"; return false; }
+        file.value = CreateFileW(io_path(path).c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_WRITE_THROUGH, nullptr);
+        if (file.value == INVALID_HANDLE_VALUE) {
+            const auto name = entry.relative.generic_u8string();
+            error = "Cannot create staged package file: " + std::string(name.begin(), name.end()) + " Win32=" + std::to_string(GetLastError()); return false;
+        }
         Sink sink{file.value, &progress};
         if (!mz_zip_reader_extract_to_callback(&archive.value, entry.index, write_data, &sink, 0) || sink.written != entry.bytes || !FlushFileBuffers(file.value)) {
             error = progress.cancelled.load() ? "Extraction cancelled" : "Archive contents are damaged or cannot be written";

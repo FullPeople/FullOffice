@@ -1,1 +1,2 @@
 1 ICON "@CMAKE_CURRENT_SOURCE_DIR@/../FullOffice.Windows/Assets/FlowOffice.ico"
+1 24 "@CMAKE_CURRENT_SOURCE_DIR@/Helper.manifest"
