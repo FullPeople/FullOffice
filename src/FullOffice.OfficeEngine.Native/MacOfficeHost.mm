@@ -112,7 +112,7 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
             // Observe real editor state; never change document content through JavaScript.
             editor->ExecuteInAllFrames("(function(){var e=(window.Asc&&window.Asc.editor)||window.editor;"
                 "if(e&&e.isDocumentLoadComplete===true&&window.AscDesktopEditor)"
-                "window.AscDesktopEditor.execCommand('FullOffice.Probe.Ready','1');})();", false);
+                "window.AscDesktopEditor.execCommand('FullOffice.Probe.Ready','1');})();", true);
             return;
         }
         if (inputStarted) return;
