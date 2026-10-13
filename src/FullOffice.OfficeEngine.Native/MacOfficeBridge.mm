@@ -1,6 +1,7 @@
 // FullOffice native Office bridge. GNU AGPL version 3; see LICENSE and NOTICE.txt.
 #import <AppKit/AppKit.h>
 #import <objc/runtime.h>
+#include <dlfcn.h>
 #include <atomic>
 #include <filesystem>
 #include <iostream>
@@ -20,6 +21,11 @@ std::wstring bridgeWideString(const char* text) {
     return std::wstring(static_cast<const wchar_t*>([data bytes]), [data length]/sizeof(wchar_t));
 }
 CAscApplicationManager* createManager() { return new CAscApplicationManager(); }
+class BridgeViewWrapper final : public CCefViewWrapper {
+public:
+    explicit BridgeViewWrapper(NSView* parent) : CCefViewWrapper(parent) {}
+    void OnRelease() override { std::cout<<"BRIDGE_WIDGET_RELEASED"<<std::endl; }
+};
 class Listener final : public NSEditorApi::CAscCefMenuEventListener {
     void OnEvent(NSEditorApi::CAscCefMenuEvent* event) override {
         if (event) {
@@ -77,7 +83,7 @@ extern "C" int fo_office_initialize(const char* resources, const char* profile) 
 }
 extern "C" int fo_office_attach(void* parent, const char* document) {
     if (!manager || editor || !std::filesystem::is_regular_file(document)) return 0;
-    wrapper=new CCefViewWrapper((__bridge NSView*)parent); wrapper->resizeEvent();
+    wrapper=new BridgeViewWrapper((__bridge NSView*)parent); wrapper->resizeEvent();
     editor=manager->CreateCefEditor(wrapper); if (!editor) return 0;
     viewId=editor->GetId();
     wrapper->m_pCefView=editor; ready=false; dirty=false; saved=false; destroyed=false;
@@ -105,6 +111,8 @@ extern "C" void fo_office_run() {
 extern "C" void fo_office_close() {
     if (manager) {
         std::cout<<"BRIDGE_CLOSE_VIEW_COUNT "<<manager->GetViewsId().size()<<std::endl;
+        auto currentUI = reinterpret_cast<int(*)(int)>(dlsym(RTLD_DEFAULT,"cef_currently_on"));
+        std::cout<<"BRIDGE_CEF_UI_SEQUENCE "<<(currentUI ? currentUI(0) : -1)<<std::endl;
         std::cout<<"BRIDGE_CLOSE_VIEW_ID "<<viewId<<std::endl;
         for (int registeredId : manager->GetViewsId()) std::cout<<"BRIDGE_REGISTERED_VIEW_ID "<<registeredId<<std::endl;
         if (viewId >= 0) manager->DestroyCefView(viewId, false);
