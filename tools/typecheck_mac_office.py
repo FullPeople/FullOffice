@@ -7,7 +7,7 @@ work=root/'.cache/mac-office-typecheck';work.mkdir(parents=True,exist_ok=False)
 sources=root/'src/FullOffice.Mac'
 shared=[str(sources/'OfficeFileSession.swift'),str(sources/'OfficeCoordinator.swift'),str(sources/'OfficeRecovery.swift')]
 subprocess.run(['xcrun','swiftc','-typecheck','-swift-version','5',*shared,str(sources/'ProductProbe.swift'),str(sources/'main.swift')],check=True,timeout=90)
-for name in ['ProcessOfficeProbe.swift','mac_office_session_checks.swift']:
+for name in ['ProcessOfficeProbe.swift','mac_office_session_checks.swift','mac_recovery_ui_fixture.swift']:
     original=sources/name if name=='ProcessOfficeProbe.swift' else root/'tools'/name
     case=work/name;case.mkdir();shutil.copy2(original,case/'main.swift')
     subprocess.run(['xcrun','swiftc','-typecheck','-swift-version','5',*shared,str(case/'main.swift')],check=True,timeout=90)

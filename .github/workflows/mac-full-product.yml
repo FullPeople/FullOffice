@@ -19,8 +19,12 @@ jobs:
         run: python3 tools/typecheck_mac_office.py
       - name: Exercise file replacement and retained-snapshot recovery
         run: python3 tools/verify_mac_office_sessions.py
+      - name: Build the native UI test runner before runtime download
+        run: python3 tools/run_mac_recovery_ui.py --compile-only
       - name: Build self-contained app and run actual DOCX and XLSX editing
         run: python3 tools/inspect_mac_office_engine.py --product-host
+      - name: Operate actual recovery menu and system Save panel
+        run: python3 tools/run_mac_recovery_ui.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -29,6 +33,7 @@ jobs:
             artifacts/mac-office-abi/
             artifacts/mac-office-session-checks/
             artifacts/mac-product-ui/
+            artifacts/mac-recovery-ui/
             artifacts/macos-full/bundle-manifest.json
             artifacts/macos-full/*-load-commands.txt
           if-no-files-found: warn

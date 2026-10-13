@@ -119,7 +119,9 @@ final class Delegate: NSObject, NSApplicationDelegate {
     var officeMessages = [ObjectIdentifier: String]()
     var productProbe: ProductProbe?
     var recoveryBusy = false
+    var recoveryRootOverride: URL?
     var officeRoot: URL {
+        if let recoveryRootOverride { return recoveryRootOverride }
         if let probe = productProbe { return probe.output.appendingPathComponent("sessions", isDirectory: true) }
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("FullOffice/EditingSessions", isDirectory: true)
@@ -199,6 +201,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         guard alert.runModal() == .alertFirstButtonReturn else { recoveryBusy = false; return }
         let entry = entries[selector.indexOfSelectedItem]
         let panel = NSSavePanel()
+        panel.directoryURL = entry.source.deletingLastPathComponent()
         panel.nameFieldStringValue = entry.source.deletingPathExtension().lastPathComponent + "（恢复）." + entry.format
         panel.allowedContentTypes = UTType(filenameExtension: entry.format).map { [$0] } ?? [.data]
         panel.allowsOtherFileTypes = false
@@ -214,6 +217,11 @@ final class Delegate: NSObject, NSApplicationDelegate {
     }
     func applicationDidFinishLaunching(_ notification: Notification) {
         probeStage("did-finish-launching")
+        if let index = CommandLine.arguments.firstIndex(of: "--recovery-ui-root") {
+            guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true",
+                  CommandLine.arguments.count > index + 1, CommandLine.arguments[index+1].hasPrefix("/") else { exit(2) }
+            recoveryRootOverride = URL(fileURLWithPath: CommandLine.arguments[index+1], isDirectory: true)
+        }
         let menu = NSMenu(), appMenu = NSMenu(), item = NSMenuItem()
         item.submenu = appMenu; menu.addItem(item)
         appMenu.addItem(withTitle: "退出 FullOffice", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -238,7 +246,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
-        if CommandLine.arguments.contains("--ui-probe") || CommandLine.arguments.contains("--office-ui-probe") {
+        if CommandLine.arguments.contains("--ui-probe") || CommandLine.arguments.contains("--office-ui-probe") || CommandLine.arguments.contains("--recovery-ui-root") {
             probeStage("probe-launch-arguments-handled")
             sender.reply(toOpenOrPrint: .success)
             return
