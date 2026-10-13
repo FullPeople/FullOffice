@@ -118,8 +118,11 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
             // Observe real editor state; never change document content through JavaScript.
             editor->ExecuteInAllFrames("(function(){var a=window.Asc&&window.Asc.editor,b=window.editor,c=window.AscCommon&&window.AscCommon.editor;"
                 "if(!window.AscDesktopEditor)return;var e=a||b||c;"
-                "window.AscDesktopEditor.execCommand('FullOffice.Probe.State',JSON.stringify({asc:typeof a,editor:typeof b,common:typeof c,complete:e&&e.isDocumentLoadComplete}));"
-                "if(e&&e.isDocumentLoadComplete===true)window.AscDesktopEditor.execCommand('FullOffice.Probe.Ready','1');})();", true);
+                "window.AscDesktopEditor.execCommand('FullOffice.Probe.State',JSON.stringify({asc:typeof a,editor:typeof b,common:typeof c,callback:e&&typeof e.asc_registerCallback}));"
+                "if(e&&typeof e.asc_registerCallback==='function'&&window.__fullOfficeReadyApi!==e){"
+                "window.__fullOfficeReadyApi=e;e.asc_registerCallback('asc_onDocumentContentReady',function(){"
+                "window.AscDesktopEditor.execCommand('FullOffice.Probe.Ready','1');},false);"
+                "window.AscDesktopEditor.execCommand('FullOffice.Probe.State','public-ready-callback-registered');}})();", true);
             return;
         }
         if (inputStarted) return;
