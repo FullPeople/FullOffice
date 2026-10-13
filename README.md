@@ -4,6 +4,8 @@ FullOffice 是正在开发的桌面办公软件。Windows 0.3.4 完整开发包�
 
 [Windows 安装版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.4/FullOffice-0.3.4-Setup-windows-x64.exe) · [Windows 便携版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.4/FullOffice-0.3.4-windows-x64.zip) · [官网](https://dnd.center/)。重要文件建议先用副本试用；开发版的样例检查不等于所有文档的兼容性。已复现的恢复记录清理缺陷已修复并通过真实文件锁与异常退出检查；偶发原生编辑器空白仍在调查。
 
+0.3.5 候选正在验收，修复定位页面后继续滚轮时沿用旧目标的问题，并集成 Mac 文档与表格编辑、文本预览、恢复及更新组件。当前公开安装版仍为 0.3.4，候选源码与实际发行包分别验证。
+
 ## Windows 当前可运行的能力
 
 - PDF 快速预览、适宽与清晰整页适应，按需渲染和相邻页缓存。

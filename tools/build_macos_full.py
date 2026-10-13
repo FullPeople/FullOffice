@@ -1,6 +1,7 @@
 """Build a self-contained native Mac candidate from the verified upstream runtime."""
 from pathlib import Path
 import hashlib,json,os,platform,plistlib,shutil,subprocess
+import xml.etree.ElementTree as ET
 from mac_sources import full_sources,swift_target
 from build_mac_markdown_preview import build as build_markdown_preview
 
@@ -47,6 +48,9 @@ def build(upstream,root,out):
         (target/'Contents/Info.plist').write_bytes(plistlib.dumps(info));shutil.copy2(helper,target_mac/name)
         subprocess.run(['codesign','--force','--sign','-',str(target)],check=True,timeout=30)
     sources=root/'src/FullOffice.Mac'
+    version=ET.parse(root/'src/FullOffice.Windows/FullOffice.Windows.csproj').findtext('./PropertyGroup/Version')
+    if version is None or len(version.split('.'))!=3 or not all(part.isascii() and part.isdigit() for part in version.split('.')):
+        raise RuntimeError('Product version is invalid')
     subprocess.run(['xcrun','swiftc','-swift-version','5',*swift_target(),'-O',*full_sources(root),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True,timeout=120)
     (out/'main-load-commands.txt').write_text(subprocess.check_output(['otool','-l',str(mac/'FullOffice')],text=True))
     build_markdown_preview(root,app)
@@ -59,7 +63,7 @@ def build(upstream,root,out):
             subprocess.run(['sips','-z',str(pixels),str(pixels),str(root/'src/FullOffice.Windows/Assets/icon-256.png'),'--out',str(iconset/name)],check=True,stdout=subprocess.DEVNULL)
     subprocess.run(['iconutil','-c','icns',str(iconset),'-o',str(resources/'FullOffice.icns')],check=True)
     info={'CFBundleName':'FullOffice','CFBundleDisplayName':'FullOffice','CFBundleIdentifier':'center.dnd.FullOffice',
-        'CFBundleExecutable':'FullOffice','CFBundlePackageType':'APPL','CFBundleShortVersionString':'0.3.4','CFBundleVersion':'1',
+        'CFBundleExecutable':'FullOffice','CFBundlePackageType':'APPL','CFBundleShortVersionString':version,'CFBundleVersion':'1',
         'CFBundleIconFile':'FullOffice.icns','NSHighResolutionCapable':True,'LSMinimumSystemVersion':'13.0',
         'CFBundleDocumentTypes':[{'CFBundleTypeName':'FullOffice 文档','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate',
             'CFBundleTypeExtensions':['docx','xlsx','pptx','odt','ods','odp','rtf','csv','md','markdown','txt']},
