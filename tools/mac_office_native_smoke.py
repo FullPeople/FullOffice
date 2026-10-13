@@ -111,7 +111,7 @@ def exercise(app,out,root,kind='docx',lazy=False):
         checks['AuthorOfficeDocumentUnchanged']=hashlib.sha256(fixture.read_bytes()).hexdigest()==original
         if (out/'lazy-office-window.png').is_file():
             checks['ActualLazyOfficeBodyRendered']=subprocess.run(['xcrun','swift',str(root/'tools/mac_office_ocr.swift'),str(out/'lazy-office-window.png'),str(out/'lazy-office-recognized.json')],timeout=90).returncode==0
-        report['Passed']=report['Passed'] and len(checks)==10 and all(checks.values());report['HostExitCode']=code
+        report['Passed']=report['Passed'] and len(checks)==11 and all(checks.values());report['HostExitCode']=code
         (out/'lazy-host-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
         if not report['Passed']:raise RuntimeError('Actual deferred Office integration failed')
         return

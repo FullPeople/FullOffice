@@ -21,7 +21,7 @@ typealias OfficeState = @convention(c) () -> Int32
 final class LazyDelegate: NSObject, NSApplicationDelegate {
     var pdfWindow: NSWindow!, officeWindow: NSWindow!, parent: NSView!
     var handle: UnsafeMutableRawPointer?
-    var pump: OfficeTick?, shutdown: OfficeTick?, ready: OfficeState?, runOffice: OfficeTick?, closeOffice: OfficeTick?
+    var pump: OfficeTick?, shutdown: OfficeState?, ready: OfficeState?, runOffice: OfficeTick?, closeOffice: OfficeTick?
     var timer: Timer?, readiness: Timer?
     var checks = [String: Bool]()
     var failure: String?
@@ -71,7 +71,7 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
             let initialize = try symbol("fo_office_initialize", InitOffice.self)
             let attach = try symbol("fo_office_attach", AttachOffice.self)
             pump = try symbol("fo_office_pump", OfficeTick.self)
-            shutdown = try symbol("fo_office_shutdown", OfficeTick.self)
+            shutdown = try symbol("fo_office_shutdown", OfficeState.self)
             ready = try symbol("fo_office_ready", OfficeState.self)
             runOffice = try symbol("fo_office_run", OfficeTick.self)
             closeOffice = try symbol("fo_office_close", OfficeTick.self)
@@ -124,8 +124,9 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
     }
     func complete() {
         fputs("LAZY_SHUTDOWN_BEGIN\n", stderr)
-        shutdown?(); officeWindow?.close(); pdfWindow?.close()
-        let report: [String: Any] = ["Passed": failure == nil && checks.count == 6 && checks.values.allSatisfy { $0 },
+        checks["ActualNativeBrowserDestroyedBeforeShutdown"] = shutdown?() == 1
+        officeWindow?.close(); pdfWindow?.close()
+        let report: [String: Any] = ["Passed": failure == nil && checks.count == 7 && checks.values.allSatisfy { $0 },
             "Checks": checks, "Failure": failure as Any? ?? NSNull(), "OfficeReadySeconds": readyDate?.timeIntervalSince(started) as Any? ?? NSNull(),
             "Scope": "Native PDF first, deferred Office library and real Office view in the same AppKit process; independent OCR required, not complete software acceptance"]
         do { try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("lazy-host-report.json")) }

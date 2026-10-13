@@ -36,7 +36,7 @@ class Listener final : public NSEditorApi::CAscCefMenuEventListener {
                 saved=!static_cast<NSEditorApi::CAscDocumentOnSaveData*>(event->m_pData)->get_IsCancel();
                 std::cout<<(saved ? "BRIDGE_SAVED_OK" : "BRIDGE_SAVE_CANCEL")<<std::endl;
             }
-            if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_DESTROY) {
+            if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_DESTROYWINDOW) {
                 destroyed=true;
                 if (manager) manager->GetApplication()->ExitMessageLoop();
             }
@@ -101,7 +101,13 @@ extern "C" void fo_office_run() {
     std::cout<<"BRIDGE_EVENT_LOOP_RETURNED"<<std::endl;
 }
 extern "C" void fo_office_close() {
-    if (manager) manager->DestroyCefView(-1);
+    if (manager) {
+        manager->DestroyCefView(-1);
+        // Return control to the owner; drain the asynchronous browser close
+        // before shutting down CEF. DESTROY is a request, DESTROYWINDOW is
+        // the actual browser-destruction notification from the SDK.
+        manager->GetApplication()->ExitMessageLoop();
+    }
     std::cout<<"BRIDGE_CLOSE_REQUEST_RETURNED"<<std::endl;
 }
 extern "C" int fo_office_ready() {
@@ -117,13 +123,16 @@ extern "C" int fo_office_save() {
     saved=false; editor->Apply(editor->CreateCefEvent(ASC_MENU_EVENT_TYPE_CEF_SAVE)); return 1;
 }
 extern "C" int fo_office_saved() { return saved ? 1 : 0; }
-extern "C" void fo_office_shutdown() {
-    if (!manager) return;
+extern "C" int fo_office_shutdown() {
+    if (!manager) return 1;
     manager->DestroyCefView(-1);
     NSDate* deadline=[NSDate dateWithTimeIntervalSinceNow:5];
     while (!destroyed && [deadline timeIntervalSinceNow]>0) {
+        manager->GetApplication()->DoMessageLoopEvent();
         [[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate dateWithTimeIntervalSinceNow:.01]];
     }
+    if (!destroyed) { std::cout<<"BRIDGE_CLOSE_TIMEOUT"<<std::endl; return 0; }
     [worker End]; manager=nullptr; editor=nullptr; wrapper=nullptr; worker=nil;
     std::cout<<"BRIDGE_CLOSED"<<std::endl;
+    return 1;
 }
