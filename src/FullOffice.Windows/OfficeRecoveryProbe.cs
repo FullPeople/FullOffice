@@ -26,6 +26,10 @@ static class OfficeRecoveryProbe
             using (var lease = store.Acquire(directory)) {
                 store.InitializeAsync(directory, source, 0, 0).GetAwaiter().GetResult();
                 store.SnapshotSavedAsync(directory, working).GetAwaiter().GetResult();
+                using (var nativeWriter = new FileStream(working, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete)) {
+                    store.SnapshotSavedAsync(directory, working).GetAwaiter().GetResult();
+                    checks["NativeOpenWritableHandleDoesNotBlockRecovery"] = nativeWriter.CanWrite;
+                }
                 checks["ActiveLeaseNotOfferedForRecovery"] = store.FindAsync().GetAwaiter().GetResult().Count == 0;
                 bool busyDenied = false;
                 try { store.Retire(directory); } catch (IOException) { busyDenied = true; }

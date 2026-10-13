@@ -85,7 +85,7 @@ public sealed class OfficeRecoveryStore
             string name = "snapshot-" + Guid.NewGuid().ToString("N") + ".data";
             snapshot = Path.Combine(directory, name); RejectLinks(snapshot);
             using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-            await using (var input = new FileStream(workingFile, FileMode.Open, FileAccess.Read, FileShare.Read,
+            await using (var input = new FileStream(workingFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete,
                 65536, FileOptions.Asynchronous))
             await using (var output = new FileStream(snapshot, FileMode.CreateNew, FileAccess.Write, FileShare.None,
                 65536, FileOptions.Asynchronous | FileOptions.WriteThrough)) {
@@ -96,8 +96,12 @@ public sealed class OfficeRecoveryStore
                 }
                 await output.FlushAsync().ConfigureAwait(false); output.Flush(true);
             }
+            byte[] snapshotHash = hash.GetHashAndReset();
+            byte[] currentHash = await Task.Run(() => Program.HashFile(workingFile)).ConfigureAwait(false);
+            if (!snapshotHash.SequenceEqual(currentHash))
+                throw new IOException("临时文档在生成恢复快照时发生变化，上一份快照仍保留，请再保存一次。");
             await WriteRecord(directory, record with { SavedUtc = DateTime.UtcNow,
-                SnapshotSHA256 = Convert.ToHexString(hash.GetHashAndReset()), SnapshotFile = name }).ConfigureAwait(false);
+                SnapshotSHA256 = Convert.ToHexString(snapshotHash), SnapshotFile = name }).ConfigureAwait(false);
             published = true;
             if (record.SnapshotFile != null) {
                 string previous = Path.Combine(directory, record.SnapshotFile);
