@@ -21,10 +21,11 @@ typealias OfficeState = @convention(c) () -> Int32
 final class LazyDelegate: NSObject, NSApplicationDelegate {
     var pdfWindow: NSWindow!, officeWindow: NSWindow!, parent: NSView!
     var handle: UnsafeMutableRawPointer?
-    var pump: OfficeTick?, shutdown: OfficeTick?, ready: OfficeState?
+    var pump: OfficeTick?, shutdown: OfficeTick?, ready: OfficeState?, runOffice: OfficeTick?, closeOffice: OfficeTick?
     var timer: Timer?, readiness: Timer?
     var checks = [String: Bool]()
     var failure: String?
+    var running = false, finishing = false
     var started = Date(), readyDate: Date?
     let args = CommandLine.arguments
     var output: URL { URL(fileURLWithPath: args[6], isDirectory: true) }
@@ -45,10 +46,19 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
             pdfWindow.title = "FullOffice PDF"; pdfWindow.isReleasedWhenClosed = false
             pdfWindow.contentView = pdf; pdfWindow.center(); pdfWindow.makeKeyAndOrderFront(nil)
             checks["PDFOpensBeforeOfficeInitialization"] = pdf.document?.pageCount == 3 && pdfWindow.isVisible
-            let unloaded = dlopen(args[2], RTLD_NOLOAD)
+            let unloaded = dlopen(args[2], RTLD_NOLOAD | RTLD_NOW)
             checks["OfficeLibraryNotLoadedForPDF"] = unloaded == nil
             if let unloaded { dlclose(unloaded) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.loadOffice() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                let visible = self.capture(self.pdfWindow, "lazy-pdf-before-office.png")
+                let preliminary: [String: Any] = ["Checks": self.checks, "PDFCompositorBeforeOffice": visible,
+                    "Scope": "PDF startup evidence only; does not establish Office integration success"]
+                do {
+                    try JSONSerialization.data(withJSONObject: preliminary, options: [.prettyPrinted, .sortedKeys])
+                        .write(to: self.output.appendingPathComponent("lazy-pdf-startup.json"))
+                } catch { self.failure = String(describing: error); self.finish(); return }
+                self.loadOffice()
+            }
         } catch { failure = String(describing: error); finish() }
     }
     func loadOffice() {
@@ -60,6 +70,8 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
             pump = try symbol("fo_office_pump", OfficeTick.self)
             shutdown = try symbol("fo_office_shutdown", OfficeTick.self)
             ready = try symbol("fo_office_ready", OfficeState.self)
+            runOffice = try symbol("fo_office_run", OfficeTick.self)
+            closeOffice = try symbol("fo_office_close", OfficeTick.self)
             let initialized = args[3].withCString { resources in args[4].withCString { profile in initialize(resources, profile) } }
             guard initialized == 1 else { throw NSError(domain: "FullOffice", code: 3) }
             officeWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 800), styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
@@ -82,6 +94,11 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             RunLoop.main.add(readiness!, forMode: .common)
+            running = true
+            runOffice?()
+            running = false
+            if !finishing { failure = "Native Office event loop ended before completion"; finish() }
+            else { complete() }
         } catch { failure = String(describing: error); finish() }
     }
     func capture(_ window: NSWindow?, _ name: String) -> Bool {
@@ -91,9 +108,15 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
         do { try process.run(); process.waitUntilExit(); return process.terminationStatus == 0 } catch { return false }
     }
     func finish() {
+        guard !finishing else { return }
+        finishing = true
         readiness?.invalidate(); timer?.invalidate()
         checks["ActualPDFCompositorCapture"] = capture(pdfWindow, "lazy-pdf-window.png")
         checks["ActualOfficeCompositorCapture"] = capture(officeWindow, "lazy-office-window.png")
+        if running { closeOffice?(); return }
+        complete()
+    }
+    func complete() {
         shutdown?(); officeWindow?.close(); pdfWindow?.close()
         let report: [String: Any] = ["Passed": failure == nil && checks.count == 6 && checks.values.allSatisfy { $0 },
             "Checks": checks, "Failure": failure as Any? ?? NSNull(), "OfficeReadySeconds": readyDate?.timeIntervalSince(started) as Any? ?? NSNull(),
