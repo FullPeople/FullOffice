@@ -62,6 +62,7 @@ static Listener listener;
     OfficeParent* parent = [[OfficeParent alloc] initWithFrame:[[window contentView] bounds]];
     [parent setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [window setContentView:parent];
+    [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
     wrapper = new CCefViewWrapper(parent);
     wrapper->resizeEvent();
     emit("EDITOR_BOUNDS " + std::to_string(wrapper->cef_width) + " " + std::to_string(wrapper->cef_height));
@@ -72,7 +73,9 @@ static Listener listener;
     emit("EDITOR_CREATED " + std::to_string(editor->GetId()));
     editor->OpenLocalFile(officeWideString([NSString stringWithUTF8String:document.c_str()]),
         CAscApplicationManager::GetFileFormatByExtentionForSave(officeWideString([NSString stringWithUTF8String:document.c_str()])), L"lang=zh-CN");
-    [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
+    emit("CHILD_VIEWS " + std::to_string([[parent subviews] count]));
+    for (NSView* child in [parent subviews])
+        emit(std::string("CHILD_VIEW ") + [NSStringFromClass([child class]) UTF8String]);
     wrapper->resizeEvent();
     [NSTimer scheduledTimerWithTimeInterval:35 repeats:NO block:^(NSTimer*) {
         NSString* target = [NSString stringWithUTF8String:(output / "native-office-window.png").c_str()];
@@ -107,6 +110,7 @@ int main(int argc, const char* argv[]) {
     manager->SetEventListener(&listener);
     [worker Start:argc argv:argv];
     emit("CEF_INITIALIZED");
+    emit(std::string("APPLICATION_CLASS ") + [NSStringFromClass([NSApp class]) UTF8String]);
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     HostDelegate* delegate = [[HostDelegate alloc] init]; [NSApp setDelegate:delegate];
     [NSApp run];

@@ -22,6 +22,9 @@ def exercise(app,out,root):
         str(source/'MacOfficeHost.mm'),'-framework','ascdocumentscore','-framework','AppKit',
         *['-Wl,-rpath,'+str(path) for path in framework_roots],'-o',str(mac/'FullOfficeOfficeHost')]
     (out/'native-library-search-paths.json').write_text(json.dumps([p.relative_to(app).as_posix() for p in framework_roots],indent=2))
+    helper=host/'Contents/Frameworks/editors_helper.app/Contents/MacOS/editors_helper'
+    (out/'native-helper-path.json').write_text(json.dumps({'Exists':helper.is_file(), 'Resolved':str(helper.resolve()),
+        'Bytes':helper.stat().st_size if helper.is_file() else None},indent=2))
     subprocess.run(build,check=True,timeout=90)
     fixture=work/'native-probe.docx'
     with ZipFile(fixture,'w',ZIP_DEFLATED) as z:
@@ -32,6 +35,18 @@ def exercise(app,out,root):
     started=time.time()
     with (out/'native-host.log').open('wb') as log:
         process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(resources),str(work/'profile'),str(fixture),str(out),str(entries[0])],stdout=log,stderr=subprocess.STDOUT)
+        time.sleep(10)
+        listing=subprocess.check_output(['ps','-axo','pid=,ppid=,command='],text=True)
+        rows=[]
+        for line in listing.splitlines():
+            parts=line.strip().split(None,2)
+            if len(parts)==3:rows.append({'PID':int(parts[0]),'ParentPID':int(parts[1]),'Command':parts[2]})
+        owned={process.pid}
+        while True:
+            expanded=owned|{row['PID'] for row in rows if row['ParentPID'] in owned}
+            if expanded==owned:break
+            owned=expanded
+        (out/'native-owned-processes.json').write_text(json.dumps([row for row in rows if row['PID'] in owned],indent=2))
         try:code=process.wait(timeout=100)
         except subprocess.TimeoutExpired:
             process.kill();process.wait(timeout=15);code=process.returncode
