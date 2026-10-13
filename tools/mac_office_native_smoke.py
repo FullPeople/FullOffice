@@ -87,6 +87,13 @@ def exercise(app,out,root,kind='docx',lazy=False):
                 crashes.append(crash)
             except (ValueError,KeyError,IndexError):continue
         (out/'lazy-owned-crashes.json').write_text(json.dumps(crashes,indent=2))
+        if code in (-5,-6,-11):
+            debug_profile=work/'lazy-debug-profile';debug_output=out/'lazy-debug';debug_output.mkdir()
+            commands=['lldb','--batch','-o','run','-o','thread backtrace all','-o','quit','--',str(mac/'FullOfficeOfficeHost'),
+                str(pdf),str(bridge),str(resources),str(debug_profile),str(working),str(debug_output)]
+            with (out/'lazy-debugger.log').open('wb') as log:
+                try:subprocess.run(commands,stdout=log,stderr=subprocess.STDOUT,timeout=120)
+                except subprocess.TimeoutExpired:log.write(b'Owned debugger observation deadline reached\n')
         report=json.loads((out/'lazy-host-report.json').read_text()) if (out/'lazy-host-report.json').is_file() else {'Passed':False,'Checks':{}}
         checks=report['Checks'];checks['ActualLazyAppClosesNormally']=code==0
         checks['AuthorPDFUnchanged']=hashlib.sha256(pdf.read_bytes()).hexdigest()==pdf_hash
