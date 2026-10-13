@@ -115,7 +115,9 @@ extern "C" void fo_office_close() {
         std::cout<<"BRIDGE_CEF_UI_SEQUENCE "<<(currentUI ? currentUI(0) : -1)<<std::endl;
         std::cout<<"BRIDGE_CLOSE_VIEW_ID "<<viewId<<std::endl;
         for (int registeredId : manager->GetViewsId()) std::cout<<"BRIDGE_REGISTERED_VIEW_ID "<<registeredId<<std::endl;
-        if (viewId >= 0) manager->DestroyCefView(viewId, false);
+        // This manager belongs exclusively to this Office host. Retire it
+        // through the full application-close path used by NSAscApplication.
+        manager->DestroyCefView(-1);
         // Wait for DESTROYWINDOW, the actual browser-destruction notification.
         // DESTROY is only a request; it cannot establish shutdown readiness.
     }
