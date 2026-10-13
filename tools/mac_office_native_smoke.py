@@ -4,7 +4,7 @@ import hashlib,json,plistlib,subprocess,time,os,shutil
 from zipfile import ZipFile,ZIP_DEFLATED
 import xml.etree.ElementTree as ET
 
-def exercise(app,out,root,kind='docx'):
+def exercise(app,out,root,kind='docx',process_host=False):
     resources=app/'Contents/Resources';frameworks=app/'Contents/Frameworks'
     entries=[p for p in resources.rglob('index.html') if p.as_posix().endswith('/apps/api/documents/index.html')]
     if len(entries)!=1:
@@ -57,10 +57,18 @@ def exercise(app,out,root,kind='docx'):
             z.writestr('xl/worksheets/sheet1.xml','<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews><cols><col min="2" max="2" width="60" customWidth="1"/></cols><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1" t="inlineStr"><is><t>MAC_ENGINE_BODY_PROBE_20261013</t></is></c></row><row r="2"><c r="A2"><v>2</v></c></row><row r="3"><c r="A3"><f>SUM(A1:A2)</f><v>3</v></c></row></sheetData></worksheet>')
     original=hashlib.sha256(fixture.read_bytes()).hexdigest()
     working=work/('working-probe.'+kind);shutil.copy2(fixture,working)
+    command=[str(mac/'FullOfficeOfficeHost'),str(resources),str(work/'profile'),str(working),str(out),str(entries[0])]
+    if process_host:
+        pdf=work/'process-probe.pdf'
+        subprocess.run(['xcrun','swift',str(root/'tools/create_mac_probe_fixture.swift'),str(pdf)],check=True,timeout=60)
+        pdf_hash=hashlib.sha256(pdf.read_bytes()).hexdigest()
+        parent=work/'FullOfficeProcessProbe'
+        subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'src/FullOffice.Mac/ProcessOfficeProbe.swift'),
+            '-framework','AppKit','-framework','PDFKit','-o',str(parent)],check=True,timeout=90)
+        command=[str(parent),str(pdf),*command]
     started=time.time()
     with (out/'native-host.log').open('wb') as log:
-        process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(resources),str(work/'profile'),str(working),str(out),str(entries[0])],
-            env=dict(os.environ,FULLOFFICE_MAC_NATIVE_EDIT_PROBE='1'),stdout=log,stderr=subprocess.STDOUT)
+        process=subprocess.Popen(command,env=dict(os.environ,FULLOFFICE_MAC_NATIVE_EDIT_PROBE='1'),stdout=log,stderr=subprocess.STDOUT,start_new_session=process_host)
         time.sleep(10)
         listing=subprocess.check_output(['ps','-axo','pid=,ppid=,command='],text=True)
         rows=[]
@@ -75,7 +83,11 @@ def exercise(app,out,root,kind='docx'):
         (out/'native-owned-processes.json').write_text(json.dumps([row for row in rows if row['PID'] in owned],indent=2))
         try:code=process.wait(timeout=100)
         except subprocess.TimeoutExpired:
-            process.kill();process.wait(timeout=15);code=process.returncode
+            if process_host:
+                import signal
+                os.killpg(process.pid,signal.SIGKILL)
+            else:process.kill()
+            process.wait(timeout=15);code=process.returncode
             (out/'native-timeout.json').write_text(json.dumps({'OwnedPid':process.pid,'TimedOut':True}))
     crash_reports=[]
     diagnostic_root=Path.home()/'Library/Logs/DiagnosticReports'
@@ -113,8 +125,15 @@ def exercise(app,out,root,kind='docx'):
         checks['SavedDocumentPackageValid']=saved.testzip() is None
     host_log=(out/'native-host.log').read_text(errors='replace')
     checks['ActualNativeDirtyAndSaveEvents']='DIRTY 1' in host_log and 'SAVED OK' in host_log and 'DOCUMENT_CONTENT_READY' in host_log
+    expected_checks=7 if kind=='docx' else 9
+    if process_host:
+        parent_report=json.loads((out/'process-parent-report.json').read_text()) if (out/'process-parent-report.json').is_file() else {'Passed':False,'Checks':{}}
+        checks.update(parent_report['Checks'])
+        checks['NativeOfficeDestroyEventObserved']='OFFICE_EVENT 8000' in host_log
+        checks['AuthorPDFUnchanged']=hashlib.sha256(pdf.read_bytes()).hexdigest()==pdf_hash
+        expected_checks+=9
     shutil.copy2(working,out/('saved-working-probe.'+kind))
-    report={'Passed':len(checks)==(7 if kind=='docx' else 9) and all(checks.values()),'Checks':checks,'Format':kind,'HostExitCode':code,'OwnedPid':process.pid,
+    report={'Passed':len(checks)==expected_checks and all(checks.values()),'Checks':checks,'Format':kind,'HostExitCode':code,'OwnedPid':process.pid,
         'Scope':'Actual native ONLYOFFICE Mac editor, authored '+kind.upper()+' and dispatched AppKit input events, native save request and independent package verification; not physical keyboard, complex workbook or final FullOffice integration acceptance.'}
     (out/'native-host-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
     if not report['Passed']:
