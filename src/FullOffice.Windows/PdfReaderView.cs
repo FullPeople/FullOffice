@@ -130,7 +130,7 @@ public sealed partial class PdfReaderView : UserControl
         bool sharpWholePage=fitWholePage;int physicalWidth=(int)Math.Round(logicalWidth*dpi),physicalHeight=(int)Math.Round(logicalHeight*dpiInfo.DpiScaleY);
         RenderOptions.SetBitmapScalingMode(pageImage,fitWholePage?BitmapScalingMode.HighQuality:BitmapScalingMode.Linear);
         status.Text=$"正在显示第 {page+1} 页…";loadingText.Text=status.Text;loadingBadge.Visibility=Visibility.Visible;firstPreviewMs=0;
-        if(!annotationTab&&followBookmark){var bookmark=bookmarks.Where(b=>b.Page>=0&&b.Page<=page).OrderBy(b=>b.Page).LastOrDefault();if(bookmark!=null&&!Equals(navigation.List.SelectedItem,bookmark)){updatingNavigation=true;try{navigation.Reveal(bookmark);navigation.List.SelectedItem=bookmark;navigation.List.ScrollIntoView(bookmark);}finally{updatingNavigation=false;}}}
+        if(!annotationTab&&followBookmark){var bookmark=bookmarks.Where(b=>b.Page>=0&&b.Page<=page).OrderBy(b=>b.Page).LastOrDefault();if(bookmark!=null&&!Equals(navigation.List.SelectedItem,bookmark)){updatingNavigation=true;try{navigation.Reveal(bookmark);navigation.List.SelectedItem=bookmark;}finally{updatingNavigation=false;}_=FollowBookmarkAfterInput(bookmark,revision,token);}}
         bool hasPreview=engine.TryGetPreview(page,out var preview),initialPositionApplied=false,destinationApplied=false;
         if(hasPreview)firstPreviewMs=display.Elapsed.TotalMilliseconds;pageImage.Source=preview?.Image;if(sharpWholePage&&preview!=null&&RasterQuality.TryGetDisplay(preview.Image,physicalWidth,physicalHeight,out var sharpPreview))pageImage.Source=sharpPreview;pageImage.Width=logicalWidth;pageImage.Height=logicalHeight;canvas.Width=logicalWidth;canvas.Height=logicalHeight;UpdateTagDisplays();
         pageImage.BeginAnimation(OpacityProperty,null);pageImage.Opacity=1;
@@ -156,6 +156,13 @@ public sealed partial class PdfReaderView : UserControl
             RenderCopySelection();UpdateTagDisplays();Host.ReaderChanged(this);_ = RefreshHoverIcons(page,documentGeneration,revision,token);status.Text=engine.Modified?"有未保存的书签或标注":wheelPageMode?"仅页内滚动":"到页尾翻页";metrics.Text=$"打开 {openedMs:F0} ms  ·  首次预览 {firstPreviewMs:F0} ms  ·  清晰页面 {display.Elapsed.TotalMilliseconds:F0} ms";
             _ = Prefetch(page+1,pixelWidth,token);_ = Prefetch(page-1,pixelWidth,token);
         }catch(OperationCanceledException){}catch(Exception ex){if(!token.IsCancellationRequested&&revision==renderRevision){status.Text=ex.Message;loadingBadge.Visibility=Visibility.Collapsed;}}
+    }
+    async Task FollowBookmarkAfterInput(Bookmark bookmark,int revision,CancellationToken token){
+        try{
+            await Task.Delay(80,token);await Dispatcher.Yield(DispatcherPriority.Background);
+            if(disposed||token.IsCancellationRequested||revision!=renderRevision||!Equals(navigation.List.SelectedItem,bookmark))return;
+            updatingNavigation=true;try{navigation.List.ScrollIntoView(bookmark);}finally{updatingNavigation=false;}
+        }catch(OperationCanceledException){}
     }
     async Task Prefetch(int page,int width,CancellationToken token){if(page<0||page>=engine.PageCount)return;try{await Task.Delay(320,token);await engine.RenderAsync(page,width,token,true);}catch(OperationCanceledException){}catch(Exception){}}
     async Task ReadAnnotations(CancellationToken token,int documentGeneration){
