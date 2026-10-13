@@ -12,7 +12,7 @@ CAscApplicationManager* manager = nullptr;
 CCefViewEditor* editor = nullptr;
 CCefViewWrapper* wrapper = nullptr;
 std::atomic<bool> ready{false}, dirty{false}, saved{false}, keyboardPending{false}, destroyed{false};
-std::wstring wide(const char* text) {
+std::wstring bridgeWideString(const char* text) {
     NSString* value = [NSString stringWithUTF8String:text];
     NSData* data = [value dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
     return std::wstring(static_cast<const wchar_t*>([data bytes]), [data length]/sizeof(wchar_t));
@@ -50,11 +50,11 @@ extern "C" int fo_office_initialize(const char* resources, const char* profile) 
         worker=[[NSAscApplicationWorker alloc] initWithCreator:&createManager];
         manager=[NSAscApplicationWorker getAppManager];
         auto& s=manager->m_oSettings;
-        s.SetUserDataPath(wide(profile));
+        s.SetUserDataPath(bridgeWideString(profile));
         for (const auto& p : {s.recover_path,s.user_plugins_path,s.fonts_cache_info_path}) std::filesystem::create_directories(p);
-        s.local_editors_path=wide(entry.c_str()); s.file_converter_path=wide((root/"converter").c_str());
-        s.spell_dictionaries_path=wide((root/"dictionaries").c_str());
-        s.system_templates_path=wide((root/"converter/templates").c_str());
+        s.local_editors_path=bridgeWideString(entry.c_str()); s.file_converter_path=bridgeWideString((root/"converter").c_str());
+        s.spell_dictionaries_path=bridgeWideString((root/"dictionaries").c_str());
+        s.system_templates_path=bridgeWideString((root/"converter/templates").c_str());
         s.plugins_support=false; s.macroses_support=false; s.country="CN";
         manager->SetEventListener(&listener);
         const char* executable=[[[NSProcessInfo processInfo] arguments][0] UTF8String];
@@ -68,7 +68,7 @@ extern "C" int fo_office_attach(void* parent, const char* document) {
     wrapper=new CCefViewWrapper((__bridge NSView*)parent); wrapper->resizeEvent();
     editor=manager->CreateCefEditor(wrapper); if (!editor) return 0;
     wrapper->m_pCefView=editor; ready=false; dirty=false; saved=false; destroyed=false;
-    auto path=wide(document);
+    auto path=bridgeWideString(document);
     editor->OpenLocalFile(path,CAscApplicationManager::GetFileFormatByExtentionForSave(path),L"lang=zh-CN");
     wrapper->UpdateSize(); wrapper->resizeEvent(); editor->focus(true);
     return 1;
