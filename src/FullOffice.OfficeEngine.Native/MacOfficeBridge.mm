@@ -102,7 +102,8 @@ extern "C" void fo_office_run() {
 }
 extern "C" void fo_office_close() {
     if (manager) {
-        manager->DestroyCefView(-1);
+        std::cout<<"BRIDGE_CLOSE_VIEW_COUNT "<<manager->GetViewsId().size()<<std::endl;
+        if (editor) manager->DestroyCefView(editor->GetId(), false);
         // Return control to the owner; drain the asynchronous browser close
         // before shutting down CEF. DESTROY is a request, DESTROYWINDOW is
         // the actual browser-destruction notification from the SDK.
