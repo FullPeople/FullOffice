@@ -79,6 +79,12 @@ def exercise(app,out,root):
         # same authored document and desktop; this cannot make the host pass.
         if __import__('os').environ.get('GITHUB_ACTIONS')!='true':
             raise RuntimeError('Upstream reference requires the disposable hosted runner')
+        bundle_id=plistlib.loads((app/'Contents/Info.plist').read_bytes())['CFBundleIdentifier']
+        # Sparkle first launch otherwise blocks this control behind its update prompt.
+        # Set only this fresh hosted VM's upstream preference, before the first launch.
+        subprocess.run(['defaults','write',bundle_id,'SUEnableAutomaticChecks','-bool','NO'],check=True,timeout=15)
+        (out/'upstream-reference-preferences.json').write_text(json.dumps({'BundleIdentifier':bundle_id,'SUEnableAutomaticChecks':False,
+            'Scope':'Disposable hosted reference only; not user settings or production update configuration'},indent=2))
         with (out/'upstream-reference.log').open('wb') as log:
             reference=subprocess.Popen([str(app/'Contents/MacOS/ONLYOFFICE'),str(fixture)],stdout=log,stderr=subprocess.STDOUT)
             time.sleep(40)
