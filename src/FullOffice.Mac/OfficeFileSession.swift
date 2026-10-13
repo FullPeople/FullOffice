@@ -33,6 +33,31 @@ private final class OfficeXMLGuard: NSObject, XMLParserDelegate {
     func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) { rejected = true; parser.abortParsing() }
 }
 
+private final class OfficeRootRelationshipGuard: NSObject, XMLParserDelegate {
+    let target: String
+    var rootMatches = false, rejected = false
+    private var mainRelationships = 0
+    private var depth = 0
+    init(target: String) { self.target = target }
+    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName: String?, attributes: [String: String]) {
+        let package = "http://schemas.openxmlformats.org/package/2006/relationships"
+        if depth == 0 { rootMatches = name == "Relationships" && namespaceURI == package }
+        let types = ["http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument",
+                     "http://purl.oclc.org/ooxml/officeDocument/relationships/officeDocument"]
+        if depth == 1 && name == "Relationship" && namespaceURI == package, let type = attributes["Type"], types.contains(type) {
+            mainRelationships += 1
+            var path = attributes["Target"] ?? ""
+            while path.hasPrefix("./") { path.removeFirst(2) }
+            if (path != target && path != "/" + target) || attributes["TargetMode"] == "External" { rejected = true }
+        }
+        depth += 1
+    }
+    func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName: String?) { depth -= 1 }
+    var valid: Bool { rootMatches && !rejected && mainRelationships == 1 }
+    func parser(_ parser: XMLParser, foundInternalEntityDeclarationWithName name: String, value: String?) { rejected = true; parser.abortParsing() }
+    func parser(_ parser: XMLParser, foundExternalEntityDeclarationWithName name: String, publicID: String?, systemID: String?) { rejected = true; parser.abortParsing() }
+}
+
 // File I/O runs on the Office coordinator's serial queue, never the PDF UI thread.
 // The native editor only sees a session copy. Original replacement occurs after
 // a validated stable snapshot, an original-content check and a retained backup.
@@ -70,6 +95,9 @@ final class OfficeFileSession {
         try Self.regular(selected)
         source = selected.standardizedFileURL.resolvingSymlinksInPath()
         originalHash = try Self.hash(source)
+        // Check package entry points before opening the editor. Avoid reading
+        // all image/sheet payloads here; full ZIP integrity is checked on save.
+        try Self.validate(source, format: source.pathExtension.lowercased(), integrity: false)
         try files.createDirectory(at: root, withIntermediateDirectories: true)
         directory = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try files.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -120,7 +148,7 @@ final class OfficeFileSession {
         }
         return data
     }
-    static func validate(_ url: URL, format kind: String) throws {
+    static func validate(_ url: URL, format kind: String, integrity: Bool = true) throws {
         try Self.regular(url)
         guard formats.contains(kind) else { throw OfficeSessionError.message("恢复副本的文件格式不受支持。") }
         if kind == "rtf" {
@@ -135,7 +163,7 @@ final class OfficeFileSession {
             }
             return
         }
-        _ = try tool(["-tqq", url.path], maximum: 65536)
+        if integrity { _ = try tool(["-tqq", url.path], maximum: 65536) }
         let namesData = try tool(["-Z1", url.path], maximum: 8 * 1024 * 1024)
         guard let listing = String(data: namesData, encoding: .utf8) else { throw OfficeSessionError.message("文档目录无法验证，修改仍保留。") }
         let names = listing.split(separator: "\n").map(String.init)
@@ -143,13 +171,19 @@ final class OfficeFileSession {
         let roots = ["docx": ("word/document.xml", "document"), "xlsx": ("xl/workbook.xml", "workbook"), "pptx": ("ppt/presentation.xml", "presentation")]
         let open = ["odt": "text", "ods": "spreadsheet", "odp": "presentation"]
         let entry = roots[kind]?.0 ?? "content.xml", root = roots[kind]?.1 ?? "document-content"
-        let required = roots[kind] == nil ? ["mimetype", entry] : ["[Content_Types].xml", entry]
+        let required = roots[kind] == nil ? ["mimetype", entry] : ["[Content_Types].xml", "_rels/.rels", entry]
         guard required.allSatisfy({ names.contains($0) }) else { throw OfficeSessionError.message("文档缺少必要内容，未替换原文件。") }
         if roots[kind] != nil {
             let types = try tool(["-p", url.path, "\\[Content_Types\\].xml"])
             let typesGuard = OfficeXMLGuard("Types"), typesParser = XMLParser(data: types)
             typesParser.shouldProcessNamespaces = true; typesParser.shouldResolveExternalEntities = false; typesParser.delegate = typesGuard
             guard typesParser.parse(), typesGuard.valid else { throw OfficeSessionError.message("文档类型记录无效，未替换原文件。") }
+            let relationships = try tool(["-p", url.path, "_rels/.rels"], maximum: 1024 * 1024)
+            let relationshipGuard = OfficeRootRelationshipGuard(target: entry), relationshipParser = XMLParser(data: relationships)
+            relationshipParser.shouldProcessNamespaces = true; relationshipParser.shouldResolveExternalEntities = false; relationshipParser.delegate = relationshipGuard
+            guard relationshipParser.parse(), relationshipGuard.valid else {
+                throw OfficeSessionError.message("文档的正文关联缺失或无效，原文件未更改。")
+            }
         }
         if let body = open[kind] {
             let mime = try tool(["-p", url.path, "mimetype"], maximum: 512)

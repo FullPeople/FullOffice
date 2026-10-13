@@ -91,8 +91,17 @@ do {
     let link = root.appendingPathComponent(UUID().uuidString)
     try files.createSymbolicLink(at: link, withDestinationURL: normal.directory)
     checks["ExternalSessionDirectoryLinkExcluded"] = try OfficeRecovery.list(root: root).isEmpty
+    for name in ["missing-relationship", "wrong-relationship", "external-relationship"] {
+        let (session, source) = try scenario(name)
+        try Data(contentsOf: fixtures.appendingPathComponent(name + ".docx")).write(to: session.working)
+        checks[name + "NativeSaveRejected"] = rejected { try session.commit() }
+        checks[name + "OriginalBytesPreserved"] = try Data(contentsOf: source) == original
+    }
+    let invalidSource = fixtures.appendingPathComponent("missing-relationship.docx")
+    let unusedRoot = output.appendingPathComponent("invalid-source-sessions")
+    checks["InvalidSourceRejectedBeforeWorkerSessionCreation"] = rejected { _ = try OfficeFileSession(source: invalidSource, root: unusedRoot) } && !files.fileExists(atPath: unusedRoot.path)
 } catch { failure = String(describing: error) }
-let passed = failure == nil && checks.count == 31 && checks.values.allSatisfy { $0 }
+let passed = failure == nil && checks.count == 38 && checks.values.allSatisfy { $0 }
 var report: [String: Any] = ["Passed": passed, "Checks": checks,
     "Scope": "Real macOS file coordination, backup, invalid-save rejection, external conflict, read-only, Save As and retained-snapshot recovery/export/lifecycle; no editor or recovery-dialog execution claim."]
 if let failure { report["Failure"] = failure }
