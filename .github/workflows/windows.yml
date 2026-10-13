@@ -43,6 +43,18 @@ jobs:
             python ('tools/' + $check)
             if ($LASTEXITCODE -ne 0) { throw ('Native distribution check failed: ' + $check) }
           }
+      - name: Save, revision, workspace and text probes
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'artifacts/app/FullOffice.exe'
+          $fixture = Join-Path $PWD 'tests/fixtures/feature-fixture.pdf'
+          foreach ($mode in @('saving','revision','workspace','text')) {
+            $out = Join-Path $PWD ('artifacts/' + $mode)
+            $process = Start-Process $exe -ArgumentList @('--' + $mode + '-probe',$fixture,$out) -PassThru
+            if (-not $process.WaitForExit(55000)) { Stop-Process -Id $process.Id; throw 'Owned probe timed out' }
+            $report = Get-Content (Join-Path $out ($mode + '-probe.json')) -Raw | ConvertFrom-Json
+            if ($report.Passed -ne $true) { $report | ConvertTo-Json -Depth 10; throw ('Probe failed: ' + $mode) }
+          }
       - name: Install Chinese OCR test prerequisites
         timeout-minutes: 15
         shell: pwsh
@@ -51,18 +63,16 @@ jobs:
             $state = Get-WindowsCapability -Online -Name $capability
             if ($state.State -ne 'Installed') { Add-WindowsCapability -Online -Name $capability -ErrorAction Stop }
           }
-      - name: Save, interaction and feature probes
+      - name: Full feature probe including Chinese OCR
         shell: pwsh
         run: |
           $exe = Join-Path $PWD 'artifacts/app/FullOffice.exe'
           $fixture = Join-Path $PWD 'tests/fixtures/feature-fixture.pdf'
-          foreach ($mode in @('saving','revision','workspace','feature','text')) {
-            $out = Join-Path $PWD ('artifacts/' + $mode)
-            $process = Start-Process $exe -ArgumentList @('--' + $mode + '-probe',$fixture,$out) -PassThru
-            if (-not $process.WaitForExit(55000)) { Stop-Process -Id $process.Id; throw 'Owned probe timed out' }
-            $report = Get-Content (Join-Path $out ($mode + '-probe.json')) -Raw | ConvertFrom-Json
-            if ($report.Passed -ne $true) { $report | ConvertTo-Json -Depth 10; throw ('Probe failed: ' + $mode) }
-          }
+          $out = Join-Path $PWD 'artifacts/feature'
+          $process = Start-Process $exe -ArgumentList @('--feature-probe',$fixture,$out) -PassThru
+          if (-not $process.WaitForExit(55000)) { Stop-Process -Id $process.Id; throw 'Owned feature probe timed out' }
+          $report = Get-Content (Join-Path $out 'feature-probe.json') -Raw | ConvertFrom-Json
+          if ($report.Passed -ne $true) { $report | ConvertTo-Json -Depth 10; throw 'Feature probe failed' }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
