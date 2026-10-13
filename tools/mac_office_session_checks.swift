@@ -106,6 +106,8 @@ do {
     for (name,data) in samples { let codec = try TextCodec.decode(data); checks[name + "ExactUnicodeAndCRLFRoundTrip"] = try codec.text == unicode && codec.encode(codec.text) == data }
     checks["InvalidUTF8TextRejected"] = rejected { _ = try TextCodec.decode(Data([0xC3,0x28])) }
     checks["TruncatedUTF16TextRejected"] = rejected { _ = try TextCodec.decode(Data([0xFF,0xFE,0x41])) }
+    checks["UnpairedUTF16HighSurrogateRejected"] = rejected { _ = try TextCodec.decode(Data([0xFF,0xFE,0x00,0xD8])) }
+    checks["UnpairedUTF16LowSurrogateRejected"] = rejected { _ = try TextCodec.decode(Data([0xFE,0xFF,0xDC,0x00])) }
     checks["BinaryNULTextRejected"] = rejected { _ = try TextCodec.decode(Data([65,0,66])) }
     let textRoot = output.appendingPathComponent("text-file")
     try files.createDirectory(at: textRoot, withIntermediateDirectories: false)
@@ -132,7 +134,7 @@ do {
     try changed.write(to: text.working); try text.commit()
     checks["TextAliasLaterSaveKeepsOldOriginalUntouched"] = try Data(contentsOf: textAlternate) == changed && Data(contentsOf: textSource) == externalText
 } catch { failure = String(describing: error) }
-let passed = failure == nil && checks.count == 53 && checks.values.allSatisfy { $0 }
+let passed = failure == nil && checks.count == 55 && checks.values.allSatisfy { $0 }
 var report: [String: Any] = ["Passed": passed, "Checks": checks,
     "Scope": "Real macOS file coordination, backup, invalid-save rejection, external conflict, read-only, Save As and retained-snapshot recovery/export/lifecycle; no editor or recovery-dialog execution claim."]
 if let failure { report["Failure"] = failure }

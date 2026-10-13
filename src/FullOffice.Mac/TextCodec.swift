@@ -6,6 +6,22 @@ struct TextCodec {
     let newline: String?
     let text: String
     static func decode(_ data: Data) throws -> TextCodec {
+        if data.starts(with: [0xFF,0xFE]) || data.starts(with: [0xFE,0xFF]) {
+            let littleEndian = data.starts(with: [0xFF,0xFE])
+            let valid = data.count % 2 == 0 && data.withUnsafeBytes { (bytes: UnsafeRawBufferPointer) -> Bool in
+                var highSurrogate = false
+                for index in stride(from: 2, to: bytes.count, by: 2) {
+                    let unit = littleEndian ? UInt16(bytes[index]) | UInt16(bytes[index+1]) << 8 : UInt16(bytes[index]) << 8 | UInt16(bytes[index+1])
+                    if highSurrogate {
+                        if unit < 0xDC00 || unit > 0xDFFF { return false }
+                        highSurrogate = false
+                    } else if unit >= 0xD800 && unit <= 0xDBFF { highSurrogate = true }
+                    else if unit >= 0xDC00 && unit <= 0xDFFF { return false }
+                }
+                return !highSurrogate
+            }
+            guard valid else { throw OfficeSessionError.message("UTF-16 文本不完整，原文件未更改。") }
+        }
         let encoding: Encoding, raw: String?
         if data.starts(with: [0xEF, 0xBB, 0xBF]) { encoding = .utf8BOM; raw = String(data: data.dropFirst(3), encoding: .utf8) }
         else if data.starts(with: [0xFF, 0xFE]) { encoding = .utf16LE; raw = String(data: data.dropFirst(2), encoding: .utf16LittleEndian) }
