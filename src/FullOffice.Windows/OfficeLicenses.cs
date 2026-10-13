@@ -24,12 +24,12 @@ static class OfficeLicenses
 
     public static void Show(Window owner)
     {
-        var dialog = new Window { Owner = owner, Title = "文档与表格编辑器", Width = 620, Height = 590,
+        var dialog = new Window { Owner = owner, Title = "文档、表格与演示文稿编辑器", Width = 620, Height = 590,
             WindowStartupLocation = WindowStartupLocation.CenterOwner, FontFamily = owner.FontFamily, FontSize = 13 };
         var root = new DockPanel { Margin = new(22) };
         var top = new StackPanel(); DockPanel.SetDock(top, Dock.Top); root.Children.Add(top);
         top.Children.Add(OriginalLogo(45));
-        top.Children.Add(new TextBlock { Text = "ONLYOFFICE Desktop Editors 9.4.0.129\n版权所有 © Ascensio System SIA。FullOffice 使用独立的文档与表格编辑组件。\n编辑组件使用 GNU AGPL 第 3 版；原始图形资源使用 CC BY-SA 4.0。\n保留上游产品标识与附加声明，不表示上游为 FullOffice 提供担保。",
+        top.Children.Add(new TextBlock { Text = "ONLYOFFICE Desktop Editors 9.4.0.129\n版权所有 © Ascensio System SIA。FullOffice 使用独立的文档、表格与演示文稿编辑组件。\n编辑组件使用 GNU AGPL 第 3 版；原始图形资源使用 CC BY-SA 4.0。\n保留上游产品标识与附加声明，不表示上游为 FullOffice 提供担保。",
             TextWrapping = TextWrapping.Wrap, Margin = new(0, 12, 0, 16) });
         var links = new WrapPanel(); DockPanel.SetDock(links, Dock.Bottom); root.Children.Add(links);
         foreach (var (label, url) in new[] {

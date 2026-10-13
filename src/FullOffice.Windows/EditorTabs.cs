@@ -9,7 +9,12 @@ public static class DocumentFormats
 {
     static readonly HashSet<string> text = new(StringComparer.OrdinalIgnoreCase) { ".md", ".markdown", ".txt", ".log", ".json", ".yaml", ".yml" };
     public static bool IsText(string path) => text.Contains(Path.GetExtension(path));
-    public static bool IsOffice(string path) => Path.GetExtension(path).Equals(".docx", StringComparison.OrdinalIgnoreCase) || Path.GetExtension(path).Equals(".xlsx", StringComparison.OrdinalIgnoreCase);
+    static readonly Dictionary<string, string> office = new(StringComparer.OrdinalIgnoreCase) {
+        [".docx"] = "word/document.xml", [".xlsx"] = "xl/workbook.xml", [".pptx"] = "ppt/presentation.xml"
+    };
+    public static bool IsOffice(string path) => office.ContainsKey(Path.GetExtension(path));
+    public static string OfficeContentEntry(string path) => office.TryGetValue(Path.GetExtension(path), out string? entry)
+        ? entry : throw new IOException("不支持这个文档格式。");
     public static bool Supported(string path) => IsText(path) || IsOffice(path) || Path.GetExtension(path).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
 }
 public sealed partial class WorkspaceWindow

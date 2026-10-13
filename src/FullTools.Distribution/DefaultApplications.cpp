@@ -8,10 +8,12 @@
 
 namespace fulltools {
 namespace {
-struct Format { const wchar_t* suffix; const wchar_t* kind; const wchar_t* title; };
+struct Format { const wchar_t* suffix; const wchar_t* kind; const wchar_t* title; bool requires_office = false; };
 constexpr std::array formats{
     Format{L".pdf", L"Pdf", L"PDF 文档"}, Format{L".md", L"Markdown", L"Markdown 文档"},
-    Format{L".markdown", L"Markdown", L"Markdown 文档"}, Format{L".txt", L"Text", L"文本文档"}};
+    Format{L".markdown", L"Markdown", L"Markdown 文档"}, Format{L".txt", L"Text", L"文本文档"},
+    Format{L".docx", L"Word", L"Word 文档", true}, Format{L".xlsx", L"Spreadsheet", L"Excel 工作簿", true},
+    Format{L".pptx", L"Presentation", L"演示文稿", true}};
 bool valid(const std::wstring& name) {
     return !name.empty() && name.size() < 100 && name.starts_with(L"FullOffice") &&
         std::all_of(name.begin(), name.end(), [](wchar_t c) { return std::iswalnum(c) || c == L'-' || c == L'.'; });
@@ -61,12 +63,18 @@ bool register_default_candidate(const std::filesystem::path& executable,
     if (!valid(application) || executable.is_relative() || executable.wstring().find(L'\"') != std::wstring::npos) {
         failure.set("install.default_registration", "Invalid application identity or executable path"); return false;
     }
+    if (!remove_default_candidate(application, failure)) return false;
     const std::wstring root = L"Software\\FullPeople\\" + application + L"\\Capabilities";
+    std::error_code status;
+    const auto engine = executable.parent_path() / L"office-engine";
+    const bool office_available = std::filesystem::is_regular_file(engine / L"FullOfficeOfficeHost.exe", status) &&
+        !status && std::filesystem::is_regular_file(engine / L"ascdocumentscore.dll", status) && !status;
     bool written = value(root, L"ApplicationName", application, failure) &&
-        value(root, L"ApplicationDescription", L"FullOffice：PDF 阅读与标记、Markdown 和文本编辑", failure) &&
+        value(root, L"ApplicationDescription", office_available ? L"FullOffice：文档、表格、演示文稿、PDF 与 Markdown" : L"FullOffice：PDF 阅读与标记、Markdown 和文本编辑", failure) &&
         value(root, L"ApplicationIcon", L"\"" + executable.wstring() + L"\",0", failure);
     for (const auto& format : formats) {
         if (!written) break;
+        if (format.requires_office && !office_available) continue;
         const std::wstring id = application + L"." + format.kind;
         const std::wstring classes = L"Software\\Classes\\" + id;
         written = value(classes, nullptr, format.title, failure) &&

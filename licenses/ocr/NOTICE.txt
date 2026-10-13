@@ -1,0 +1,20 @@
+FullOffice bundled OCR components
+
+The Tesseract .NET wrapper 5.2.0 is Copyright 2012-2020 Charles Weld,
+licensed under Apache-2.0. Its supplied Windows x64 library reports native
+Tesseract 5.0.0, licensed under Apache-2.0. These are different version numbers.
+
+Leptonica 1.82.0 is covered by the included BSD-style notice. Its runtime
+reports giflib 5.2.1, libjpeg-turbo 2.1.4, libpng 1.6.37, libtiff 4.4.0 and
+zlib 1.2.13; their notices are included in this directory. This software is
+based in part on the work of the Independent JPEG Group.
+
+The official tessdata_fast simplified Chinese and English models are under
+Apache-2.0. Their license, pinned source revision and hashes are included in
+ocr-data. Models and native recognition are loaded only on a copy request.
+Recognition runs in a separate process. No document image, recognized text
+or user account credential is sent to an external service.
+
+runtime-provenance.json records the exact supplied native library hashes,
+actual version queries and NuGet package source. source-records.json records
+the license origins and hashes.

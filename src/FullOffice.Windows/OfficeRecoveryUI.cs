@@ -79,14 +79,5 @@ public sealed partial class WorkspaceWindow
         }
         dialog.ShowDialog();
     }
-    static void ValidateRecoveredDocument(string path, string source)
-    {
-        using var archive = ZipFile.OpenRead(path);
-        string content = Path.GetExtension(source).Equals(".xlsx", StringComparison.OrdinalIgnoreCase) ? "xl/workbook.xml" : "word/document.xml";
-        foreach (string name in new[] { "[Content_Types].xml", content }) {
-            using var data = (archive.GetEntry(name) ?? throw new IOException("恢复文档缺少必要内容。")).Open();
-            using var reader = XmlReader.Create(data, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
-            while (reader.Read()) { }
-        }
-    }
+    static void ValidateRecoveredDocument(string path, string source) => OfficePackage.Validate(path, source);
 }

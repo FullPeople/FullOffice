@@ -1,0 +1,19 @@
+{
+  "ManagedPackage": "Tesseract 5.2.0",
+  "ManagedSourceRevision": "2c993543f7fa66576a8890a6c4ab053c4598aaed",
+  "NativeTesseractVersion": "5.0.0",
+  "LeptonicaVersion": "1.82.0",
+  "PackageURL": "https://api.nuget.org/v3-flatcontainer/tesseract/5.2.0/tesseract.5.2.0.nupkg",
+  "PackageSHA256": "202d82fc7c7d8384df7da57206d5e1f456ccdabd648c46e67cdfaa3a911d4795",
+  "Files": {
+    "leptonica-1.82.0.dll": "dfcb3e6ed0b16bc55bfdbcf53543cfe42a354b87c3e35bd3a95eebf005d73e76",
+    "tesseract50.dll": "de4d04ec75095374d98f5dd7a60d14d7e2e0f76589db693eccf7ae658be8cb2b"
+  },
+  "ImageLibraries": {
+    "giflib": "5.2.1",
+    "libjpeg-turbo": "2.1.4",
+    "libpng": "1.6.37",
+    "libtiff": "4.4.0",
+    "zlib": "1.2.13"
+  }
+}

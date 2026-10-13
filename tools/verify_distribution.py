@@ -21,6 +21,11 @@ def registry_string(path, name=None):
         return None
 user_choice_path = r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice"
 before_choice = (registry_string(user_choice_path, "ProgId"), registry_string(user_choice_path, "Hash"))
+office_suffixes = {".docx": ".Word", ".xlsx": ".Spreadsheet", ".pptx": ".Presentation"}
+def office_user_choices():
+    return {suffix: tuple(registry_string("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\" + suffix + r"\UserChoice", field)
+                         for field in ("ProgId", "Hash")) for suffix in office_suffixes}
+before_office_choices = office_user_choices()
 for index, (name, entries, accepted) in enumerate([
     ("unicode", [("文档/测试文件.txt", b"original")], True),
     ("traversal", [("../outside.txt", b"bad")], False),
@@ -47,7 +52,7 @@ shutil.copy2(root / "artifacts/app/FullOffice.exe", package / "FullOffice.exe")
 shutil.copy2(backend, package / "FullOfficeSetup.exe")
 (package / "VERSION.txt").write_text("product=FullOffice\nversion=0.2.0\npackage_version=0.2.0\narchitecture=windows-x64\nexecutable=FullOffice.exe\ncomplete=1\n", encoding="utf-8")
 def manifest():
-    lines = [hashlib.sha256(p.read_bytes()).hexdigest() + "  " + p.name for p in package.iterdir() if p.name != "SHA256SUMS.txt"]
+    lines = [hashlib.sha256(p.read_bytes()).hexdigest() + "  " + p.relative_to(package).as_posix() for p in package.rglob("*") if p.is_file() and p.name != "SHA256SUMS.txt"]
     (package / "SHA256SUMS.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
 manifest()
 install = out / "安装目录"
@@ -62,6 +67,28 @@ checks["RegisteredDefaultAppCandidate"] = registry_string(r"Software\RegisteredA
 checks["RegisteredPdfCapability"] = registry_string(capability + r"\FileAssociations", ".pdf") == key + ".Pdf"
 checks["OpenCommandQuotesDocumentPath"] = registry_string("Software\\Classes\\" + key + r".Pdf\shell\open\command") == '"' + str(install / "current/FullOffice.exe") + '" "%1"'
 checks["UserDefaultChoiceUnchanged"] = before_choice == (registry_string(user_choice_path, "ProgId"), registry_string(user_choice_path, "Hash"))
+checks["PartialEditionDoesNotRegisterOfficeFormats"] = all(registry_string(capability + r"\FileAssociations", suffix) is None for suffix in office_suffixes)
+engine = root / "artifacts/office-integration/office-engine"
+if (engine / "FullOfficeOfficeHost.exe").is_file() and (engine / "ascdocumentscore.dll").is_file():
+    # Registration detection uses two genuine runtime files, without claiming this tiny fixture can edit documents.
+    (package / "office-engine").mkdir()
+    for name in ("FullOfficeOfficeHost.exe", "ascdocumentscore.dll"):
+        shutil.copy2(engine / name, package / "office-engine" / name)
+    version_path = package / "VERSION.txt"
+    version_path.write_text(version_path.read_text().replace("0.2.0", "0.3.0"), encoding="utf-8"); manifest()
+    result = subprocess.run([str(backend), "--package-root", str(package), "--no-launch", *common], capture_output=True)
+    checks["OfficeRuntimeRegistrationDetectionUpgrades"] = result.returncode == 0
+    for suffix, kind in office_suffixes.items():
+        checks["RegisteredOfficeCapability" + suffix] = registry_string(capability + r"\FileAssociations", suffix) == key + kind
+        checks["OfficeOpenCommandQuoted" + suffix] = registry_string("Software\\Classes\\" + key + kind + r"\shell\open\command") == '"' + str(install / "current/FullOffice.exe") + '" "%1"'
+    checks["OfficeUserDefaultChoicesUnchanged"] = office_user_choices() == before_office_choices
+    for name in ("FullOfficeOfficeHost.exe", "ascdocumentscore.dll"):
+        (package / "office-engine" / name).unlink()
+    (package / "office-engine").rmdir()
+    version_path.write_text(version_path.read_text().replace("0.3.0", "0.3.1"), encoding="utf-8"); manifest()
+    result = subprocess.run([str(backend), "--package-root", str(package), "--no-launch", *common], capture_output=True)
+    checks["RemovedOfficeRuntimeClearsUnsupportedAssociations"] = result.returncode == 0 and all(
+        registry_string(capability + r"\FileAssociations", suffix) is None for suffix in office_suffixes)
 protected = out / "user-document.txt"
 protected.write_bytes(b"keep user data")
 result = subprocess.run([str(backend), "--uninstall", *common], capture_output=True)
@@ -69,6 +96,7 @@ checks["FullOfficeUninstalls"] = result.returncode == 0 and not install.exists()
 checks["DefaultAppCandidateRemoved"] = registry_string(r"Software\RegisteredApplications", key) is None
 checks["UninstallPreservesUserDefaultChoice"] = before_choice == (registry_string(user_choice_path, "ProgId"), registry_string(user_choice_path, "Hash"))
 checks["UserDocumentPreserved"] = protected.read_bytes() == b"keep user data"
+checks["OfficeUserChoicesPreservedAfterUninstall"] = office_user_choices() == before_office_choices
 (package / "FullOffice.exe").write_bytes(b"tampered")
 result = subprocess.run([str(backend), "--package-root", str(package), "--no-launch", *common], capture_output=True)
 checks["TamperedInstallRefused"] = result.returncode != 0 and not install.exists()

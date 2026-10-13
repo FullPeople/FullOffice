@@ -11,6 +11,8 @@ public static class Program
     [STAThread]
     public static int Main(string[] args){
         var jsonOptions=new JsonSerializerOptions{WriteIndented=true};
+        if (args.Length == 2 && args[0] == "--ocr-host") return PortableOcr.Run(args[1]);
+        if (args.Length == 3 && args[0] == "--portable-ocr-probe") return PortableOcrProbe.Run(args[1], args[2]);
         if (args.Length == 2 && args[0] == "--office-recovery-probe") return OfficeRecoveryProbe.Run(args[1]);
         if(args.Length>=3&&args[0]=="--inplace-probe")return InPlaceNativeProbe.Run(args[1],args[2]);
         if(args.Length>=3&&args[0]=="--edit-probe")return EditingProbe.Run(args[1],args[2]);

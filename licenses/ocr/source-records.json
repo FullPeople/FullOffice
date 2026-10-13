@@ -1,0 +1,51 @@
+[
+  {
+    "File": "Tesseract-wrapper-APACHE-2.0.txt",
+    "URL": "https://raw.githubusercontent.com/charlesw/tesseract/2c993543f7fa66576a8890a6c4ab053c4598aaed/LICENSE.txt",
+    "Bytes": 11358,
+    "SHA256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+  },
+  {
+    "File": "Leptonica-BSD.txt",
+    "URL": "https://raw.githubusercontent.com/DanBloomberg/leptonica/f4138265b390f1921b9891d6669674d3157887d8/leptonica-license.txt",
+    "Bytes": 1521,
+    "SHA256": "87829abb5bbb00b55a107365da89e9a33f86c4250169e5a1e5588505be7d5806"
+  },
+  {
+    "File": "libpng-LICENSE.txt",
+    "URL": "https://raw.githubusercontent.com/pnggroup/libpng/v1.6.37/LICENSE",
+    "Bytes": 5345,
+    "SHA256": "bf5e22b9dce8464064ae17a48ea1133c3369ac9e1d80ef9e320e5219aa14ea9b"
+  },
+  {
+    "File": "zlib-LICENSE.txt",
+    "URL": "https://raw.githubusercontent.com/madler/zlib/v1.2.13/LICENSE",
+    "Bytes": 1002,
+    "SHA256": "845efc77857d485d91fb3e0b884aaa929368c717ae8186b66fe1ed2495753243"
+  },
+  {
+    "File": "libjpeg-turbo-LICENSE.md",
+    "URL": "https://raw.githubusercontent.com/libjpeg-turbo/libjpeg-turbo/2.1.4/LICENSE.md",
+    "Bytes": 5213,
+    "SHA256": "ee1eaf194d5924b6360af8a6ba6a4e1554037091f7505943300cdeec65f1aebb"
+  },
+  {
+    "File": "libjpeg-turbo-README.ijg",
+    "URL": "https://raw.githubusercontent.com/libjpeg-turbo/libjpeg-turbo/2.1.4/README.ijg",
+    "Bytes": 12732,
+    "SHA256": "4b7b9f8c03bb8d60270dfd12684e70ab21e4abfd27e73905cd1a7c4cae6f5cdb"
+  },
+  {
+    "File": "libtiff-COPYRIGHT.txt",
+    "URL": "https://gitlab.com/libtiff/libtiff/-/raw/v4.4.0/COPYRIGHT",
+    "Bytes": 1146,
+    "SHA256": "fbd6fed7938541d2c809c0826225fc85e551fdbfa8732b10f0c87e0847acafd7"
+  },
+  {
+    "File": "giflib-COPYING.txt",
+    "URL": "https://downloads.sourceforge.net/project/giflib/giflib-5.x/giflib-5.2.1.tar.gz",
+    "Bytes": 1088,
+    "SHA256": "0c9b7990ecdca88b676db232c226548ac408b279f550d424d996f0d83591dd8e",
+    "ArchiveSHA256": "31da5562f44c5f15d63340a09a4fd62b48c45620cd302f77a6d9acf0077879bd"
+  }
+]

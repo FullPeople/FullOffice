@@ -11,7 +11,7 @@
     <ApplicationIcon>Assets/FlowOffice.ico</ApplicationIcon>
     <Version>0.2.0</Version>
     <Product>FullOffice</Product>
-    <Description>FullOffice PDF、Markdown 与文本工作台</Description>
+    <Description>FullOffice 文档、表格、演示文稿与 PDF 工作台</Description>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
     <StartupObject>FlowOfficeLab.Program</StartupObject>
   </PropertyGroup>
@@ -29,8 +29,14 @@
   </Target>
   <ItemGroup>
     <PackageReference Include="Markdig" Version="1.4.0" />
+    <PackageReference Include="Tesseract" Version="5.2.0" GeneratePathProperty="true" ExcludeAssets="build;buildTransitive" />
+    <None Include="$(PkgTesseract)/x64/*.dll" Link="x64/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="ocr-data/*.traineddata;ocr-data/LICENSE;ocr-data/provenance.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Resource Include="Assets/icon-64.png" />
     <EmbeddedResource Include="Assets/ONLYOFFICE-logo.svg" LogicalName="FullOffice.ONLYOFFICELogo" />
+    <EmbeddedResource Include="Assets/Templates/blank.pptx" LogicalName="FullOffice.BlankPresentation" />
+    <None Include="../../licenses/python-pptx-template-MIT.txt" Link="licenses/python-pptx-template-MIT.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../../licenses/ocr/*" Link="licenses/ocr/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../../licenses/ONLYOFFICE-AGPL-3.0.txt;../../licenses/ONLYOFFICE-NOTICE.txt;../../licenses/CC-BY-SA-4.0.txt" Link="licenses/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <PackageReference Include="PDFsharp" Version="6.2.4" />
     <None Include="pdfium.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

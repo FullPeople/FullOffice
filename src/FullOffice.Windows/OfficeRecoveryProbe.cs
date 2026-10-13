@@ -10,6 +10,14 @@ static class OfficeRecoveryProbe
         output = Path.GetFullPath(output); Directory.CreateDirectory(output);
         var checks = new Dictionary<string, bool>();
         try {
+            foreach (string extension in new[] { ".docx", ".xlsx", ".pptx" }) {
+                string blank = Path.Combine(output, "blank" + extension); NewDocumentFiles.Write(blank, extension);
+                OfficePackage.Validate(blank, blank); checks["BlankPackageValid" + extension] = true;
+            }
+            bool wrongFormatDenied = false;
+            try { OfficePackage.Validate(Path.Combine(output, "blank.docx"), "wrong.xlsx"); }
+            catch (IOException) { wrongFormatDenied = true; }
+            checks["CrossFormatPackageRejected"] = wrongFormatDenied;
             string root = Path.Combine(output, "sessions"), directory = Path.Combine(root, Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(Path.Combine(directory, "document"));
             string source = Path.Combine(output, "original.docx"), working = Path.Combine(directory, "document", "original.docx");

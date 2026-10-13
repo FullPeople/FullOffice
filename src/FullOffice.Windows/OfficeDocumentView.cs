@@ -40,7 +40,7 @@ public sealed class OfficeDocumentView : EditorDocumentView
     {
         var root = new DockPanel(); Content = root;
         var footer = new DockPanel(); DockPanel.SetDock(footer, Dock.Bottom); root.Children.Add(footer);
-        var credits = new Button { Content = OfficeLicenses.OriginalLogo(15), ToolTip = "文档与表格编辑器及许可证", Background = Brushes.Transparent,
+        var credits = new Button { Content = OfficeLicenses.OriginalLogo(15), ToolTip = "文档、表格与演示文稿编辑器及许可证", Background = Brushes.Transparent,
             BorderThickness = new(0), Padding = new(1), Margin = new(8, 0, 8, 0) };
         credits.Click += (_, _) => OfficeLicenses.Show(Owner); DockPanel.SetDock(credits, Dock.Right); footer.Children.Add(credits);
         footer.Children.Add(status); root.Children.Add(surface);
@@ -167,16 +167,7 @@ public sealed class OfficeDocumentView : EditorDocumentView
         if (current.IsReadOnly) throw new IOException("原文件为只读，请修改权限或另存为。");
         if ((current.Attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("链接文件请使用另存为。");
     }
-    void ValidateDocument(string path)
-    {
-        using var archive = ZipFile.OpenRead(path);
-        string required = Path.GetExtension(FilePath).Equals(".xlsx", StringComparison.OrdinalIgnoreCase) ? "xl/workbook.xml" : "word/document.xml";
-        foreach (string entry in new[] { "[Content_Types].xml", required }) {
-            using var stream = (archive.GetEntry(entry) ?? throw new IOException("保存文件缺少必要内容。")).Open();
-            using var xml = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
-            while (xml.Read()) { }
-        }
-    }
+    void ValidateDocument(string path) => OfficePackage.Validate(path, FilePath);
     async Task CopyFileAsync(string from, string to)
     {
         await using var input = new FileStream(from, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 65536, FileOptions.Asynchronous);
