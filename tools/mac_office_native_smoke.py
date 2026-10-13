@@ -2,8 +2,9 @@
 from pathlib import Path
 import hashlib,json,plistlib,subprocess,time,os,shutil
 from zipfile import ZipFile,ZIP_DEFLATED
+import xml.etree.ElementTree as ET
 
-def exercise(app,out,root):
+def exercise(app,out,root,kind='docx'):
     resources=app/'Contents/Resources';frameworks=app/'Contents/Frameworks'
     entries=[p for p in resources.rglob('index.html') if p.as_posix().endswith('/apps/api/documents/index.html')]
     if len(entries)!=1:
@@ -42,13 +43,20 @@ def exercise(app,out,root):
         subprocess.run(['codesign','--force','--sign','-',str(target)],check=True,timeout=30)
         helpers.append({'Name':name,'Executable':str(target_mac/name),'SHA256':hashlib.sha256((target_mac/name).read_bytes()).hexdigest()})
     (out/'native-helper-path.json').write_text(json.dumps({'RebuiltPinnedSDKHelper':True,'Helpers':helpers},indent=2))
-    fixture=work/'native-probe.docx'
+    fixture=work/('native-probe.'+kind)
     with ZipFile(fixture,'w',ZIP_DEFLATED) as z:
-        z.writestr('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
-        z.writestr('_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
-        z.writestr('word/document.xml','<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:sz w:val="56"/></w:rPr><w:t>MAC_ENGINE_BODY_PROBE_20261013</w:t></w:r></w:p><w:sectPr/></w:body></w:document>')
+        if kind=='docx':
+            z.writestr('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>')
+            z.writestr('_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
+            z.writestr('word/document.xml','<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:sz w:val="56"/></w:rPr><w:t>MAC_ENGINE_BODY_PROBE_20261013</w:t></w:r></w:p><w:sectPr/></w:body></w:document>')
+        else:
+            z.writestr('[Content_Types].xml','<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>')
+            z.writestr('_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>')
+            z.writestr('xl/workbook.xml','<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Calculation" sheetId="1" r:id="rId1"/></sheets></workbook>')
+            z.writestr('xl/_rels/workbook.xml.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>')
+            z.writestr('xl/worksheets/sheet1.xml','<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews><cols><col min="2" max="2" width="60" customWidth="1"/></cols><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1" t="inlineStr"><is><t>MAC_ENGINE_BODY_PROBE_20261013</t></is></c></row><row r="2"><c r="A2"><v>2</v></c></row><row r="3"><c r="A3"><f>SUM(A1:A2)</f><v>3</v></c></row></sheetData></worksheet>')
     original=hashlib.sha256(fixture.read_bytes()).hexdigest()
-    working=work/'working-probe.docx';shutil.copy2(fixture,working)
+    working=work/('working-probe.'+kind);shutil.copy2(fixture,working)
     started=time.time()
     with (out/'native-host.log').open('wb') as log:
         process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(resources),str(work/'profile'),str(working),str(out),str(entries[0])],
@@ -90,13 +98,24 @@ def exercise(app,out,root):
         recognition=subprocess.run(['xcrun','swift',str(root/'tools/mac_office_ocr.swift'),str(out/'native-office-window.png'),str(out/'recognized-document.json')],timeout=90)
         checks['ActualOfficeBodyRendered']=recognition.returncode==0
     with ZipFile(working) as saved:
-        checks['NativeInputActuallySavedToWorkingDocument']=b'MAC_NATIVE_EDIT_SAVED_20261013' in saved.read('word/document.xml')
+        if kind=='docx':
+            text=''.join(ET.fromstring(saved.read('word/document.xml')).itertext())
+            checks['NativeInputActuallySavedToWorkingDocument']='MAC_NATIVE_EDIT_SAVED_20261013' in text
+        else:
+            ns={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+            sheet=ET.fromstring(saved.read('xl/worksheets/sheet1.xml'))
+            cells={c.get('r'):c for c in sheet.findall('.//s:c',ns)}
+            values={name:cells[name].findtext('s:v',namespaces=ns) for name in ['A1','A2','A3']}
+            checks['NativeInputActuallySavedToWorkingDocument']=values['A1']=='10' and values['A2']=='2'
+            checks['DependentFormulaActuallyRecalculated']=values['A3']=='12'
+            checks['OriginalFormulaPreserved']=cells['A3'].findtext('s:f',namespaces=ns)=='SUM(A1:A2)'
+            (out/'independent-spreadsheet-values.json').write_text(json.dumps(values,indent=2))
         checks['SavedDocumentPackageValid']=saved.testzip() is None
     host_log=(out/'native-host.log').read_text(errors='replace')
     checks['ActualNativeDirtyAndSaveEvents']='DIRTY 1' in host_log and 'SAVED OK' in host_log
-    shutil.copy2(working,out/'saved-working-probe.docx')
-    report={'Passed':len(checks)==7 and all(checks.values()),'Checks':checks,'HostExitCode':code,'OwnedPid':process.pid,
-        'Scope':'Actual native ONLYOFFICE Mac editor, authored DOCX and dispatched AppKit input events, native save request and independent package verification; not physical keyboard or final FullOffice integration acceptance.'}
+    shutil.copy2(working,out/('saved-working-probe.'+kind))
+    report={'Passed':len(checks)==(7 if kind=='docx' else 9) and all(checks.values()),'Checks':checks,'Format':kind,'HostExitCode':code,'OwnedPid':process.pid,
+        'Scope':'Actual native ONLYOFFICE Mac editor, authored '+kind.upper()+' and dispatched AppKit input events, native save request and independent package verification; not physical keyboard, complex workbook or final FullOffice integration acceptance.'}
     (out/'native-host-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
     if not report['Passed']:
         # Independent upstream application control: same signed read-only bundle,

@@ -3,7 +3,8 @@ from pathlib import Path
 import hashlib,json,platform,subprocess,urllib.request,time
 import argparse
 
-parser=argparse.ArgumentParser();parser.add_argument('--native-window',action='store_true');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--native-window',action='store_true')
+parser.add_argument('--native-kind',choices=['docx','xlsx'],default='docx');args=parser.parse_args()
 
 root=Path(__file__).resolve().parents[1]
 architecture=platform.machine()
@@ -46,7 +47,7 @@ try:
     print(json.dumps({k:report[k] for k in ['RuntimeVerified','Architecture','BundleSignatureVerified','CoreLibraries','CoreSymbolCounts'] if k in report}),flush=True)
     if args.native_window:
         from mac_office_native_smoke import exercise
-        exercise(app,out,root)
+        exercise(app,out,root,args.native_kind)
 finally:
     for attempt in range(10):
         cleanup=subprocess.run(['hdiutil','detach',str(mount)],capture_output=True,text=True,timeout=15)

@@ -99,6 +99,15 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
     if (editProbe) [NSTimer scheduledTimerWithTimeInterval:18 repeats:NO block:^(NSTimer*) {
         [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES]; editor->focus(true);
         emit(std::string("INPUT_RESPONDER ") + [NSStringFromClass([[window firstResponder] class]) UTF8String]);
+        if (document.extension() == ".xlsx") {
+            nativeKey(@"\uF729", 115, NSEventModifierFlagCommand);
+            nativeKey(@"1", 18); nativeKey(@"0", 29); nativeKey(@"\r", 36);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                editor->Apply(editor->CreateCefEvent(ASC_MENU_EVENT_TYPE_CEF_SAVE));
+                emit("NATIVE_SAVE_REQUESTED");
+            });
+            return;
+        }
         NSPoint location = NSMakePoint(400, 330);
         for (auto type : {NSEventTypeLeftMouseDown, NSEventTypeLeftMouseUp})
             [NSApp sendEvent:[NSEvent mouseEventWithType:type location:location modifierFlags:0

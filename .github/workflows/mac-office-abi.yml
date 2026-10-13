@@ -11,6 +11,7 @@ jobs:
       fail-fast: false
       matrix:
         runner: [macos-15, macos-15-intel]
+        format: [docx, xlsx]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     steps:
@@ -20,10 +21,10 @@ jobs:
           xcrun clang++ -fsyntax-only -std=c++17 -fblocks -D_MAC -DDESKTOP_NO_USE_DYNAMIC_LIBRARY -DQ_DECL_EXPORT= -Isrc/FullOffice.OfficeEngine.Native/third_party/desktop-sdk/ChromiumBasedEditors/lib/include src/FullOffice.OfficeEngine.Native/MacOfficeHost.mm
           xcrun clang++ -fsyntax-only -std=c++17 -D_MAC -DDESKTOP_NO_USE_DYNAMIC_LIBRARY -DQ_DECL_EXPORT= -Isrc/FullOffice.OfficeEngine.Native/third_party/desktop-sdk/ChromiumBasedEditors/lib/include src/FullOffice.OfficeEngine.Native/MacOfficeHelper.cpp
       - name: Verify actual upstream Mac binary and inspect editor ABI
-        run: python3 tools/inspect_mac_office_engine.py --native-window
+        run: python3 tools/inspect_mac_office_engine.py --native-window --native-kind ${{ matrix.format }}
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: mac-office-abi-${{ matrix.runner }}-${{ github.run_id }}
+          name: mac-office-abi-${{ matrix.runner }}-${{ matrix.format }}-${{ github.run_id }}
           path: artifacts/mac-office-abi/
           if-no-files-found: warn
