@@ -13,7 +13,7 @@ static NSWindow* window = nil;
 static std::filesystem::path profile, document, resource, output;
 static std::mutex outputMutex;
 static void emit(const std::string& text) { std::lock_guard<std::mutex> lock(outputMutex); std::cout << text << std::endl; }
-static std::wstring wide(NSString* value) {
+static std::wstring officeWideString(NSString* value) {
     NSData* bytes = [value dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
     return std::wstring(static_cast<const wchar_t*>([bytes bytes]), [bytes length] / sizeof(wchar_t));
 }
@@ -60,8 +60,8 @@ static Listener listener;
     wrapper->m_pCefView = editor;
     wrapper->UpdateSize();
     emit("EDITOR_CREATED " + std::to_string(editor->GetId()));
-    editor->OpenLocalFile(wide([NSString stringWithUTF8String:document.c_str()]),
-        CAscApplicationManager::GetFileFormatByExtentionForSave(wide([NSString stringWithUTF8String:document.c_str()])), L"lang=zh-CN");
+    editor->OpenLocalFile(officeWideString([NSString stringWithUTF8String:document.c_str()]),
+        CAscApplicationManager::GetFileFormatByExtentionForSave(officeWideString([NSString stringWithUTF8String:document.c_str()])), L"lang=zh-CN");
     [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
     wrapper->resizeEvent();
     [NSTimer scheduledTimerWithTimeInterval:35 repeats:NO block:^(NSTimer*) {
@@ -86,13 +86,13 @@ int main(int argc, const char* argv[]) {
     manager = [NSAscApplicationWorker getAppManager];
     auto& settings = manager->m_oSettings;
     // Worker initialization selects a default system path; override it before CEF or font setup.
-    settings.SetUserDataPath(wide([NSString stringWithUTF8String:profile.c_str()]));
+    settings.SetUserDataPath(officeWideString([NSString stringWithUTF8String:profile.c_str()]));
     for (const auto& path : {settings.recover_path, settings.user_plugins_path, settings.fonts_cache_info_path})
         std::filesystem::create_directories(std::filesystem::path(path));
-    settings.local_editors_path = wide([NSString stringWithUTF8String:editorEntry.c_str()]);
-    settings.file_converter_path = wide([NSString stringWithUTF8String:(resource / "converter").c_str()]);
-    settings.spell_dictionaries_path = wide([NSString stringWithUTF8String:(resource / "dictionaries").c_str()]);
-    settings.system_templates_path = wide([NSString stringWithUTF8String:(resource / "converter/templates").c_str()]);
+    settings.local_editors_path = officeWideString([NSString stringWithUTF8String:editorEntry.c_str()]);
+    settings.file_converter_path = officeWideString([NSString stringWithUTF8String:(resource / "converter").c_str()]);
+    settings.spell_dictionaries_path = officeWideString([NSString stringWithUTF8String:(resource / "dictionaries").c_str()]);
+    settings.system_templates_path = officeWideString([NSString stringWithUTF8String:(resource / "converter/templates").c_str()]);
     settings.macroses_support = false; settings.plugins_support = false; settings.country = "CN";
     manager->SetEventListener(&listener);
     [worker Start:argc argv:argv];
