@@ -15,9 +15,11 @@ static class RichTextPackage
             if (first && Digit(value)) throw new IOException("不支持这个 RTF 格式版本。");
             first = false;
             if (depth == 0) {
+                if (value == 0 && input.Position == input.Length) continue;
                 if (value is not (9 or 10 or 13 or 32)) throw new IOException("RTF 文档结束后存在无效内容。");
                 continue;
             }
+            if (value == 0) throw new IOException("RTF 正文中存在无效的零字节。");
             if (value == '{') { ++depth; continue; }
             if (value == '}') { --depth; continue; }
             if (value != '\\') continue;

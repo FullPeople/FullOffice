@@ -7,6 +7,9 @@ static class OfficePackage
 {
     public static void Validate(string path, string documentPath)
     {
+        if (Path.GetExtension(documentPath).Equals(".csv", StringComparison.OrdinalIgnoreCase)) {
+            CsvPackage.Validate(path); return;
+        }
         if (Path.GetExtension(documentPath).Equals(".rtf", StringComparison.OrdinalIgnoreCase)) {
             RichTextPackage.Validate(path); return;
         }
