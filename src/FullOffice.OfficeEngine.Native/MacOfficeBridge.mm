@@ -96,8 +96,8 @@ extern "C" void fo_office_pump() {
 extern "C" void fo_office_run() {
     if (!manager) return;
     // The pinned SDK explicitly disables its external-loop adapter on macOS.
-    // Enter the supported CEF loop before returning to the outer AppKit loop.
-    // CEF drives AppKit events/timers while NSApplication is already running.
+    // The PDF-first AppKit loop has returned. CEF now owns the top-level
+    // application loop, including native browser-close work.
     bool ran=false;
     manager->GetApplication()->RunMessageLoop(ran);
     std::cout<<"BRIDGE_EVENT_LOOP_RETURNED"<<std::endl;
@@ -106,10 +106,8 @@ extern "C" void fo_office_close() {
     if (manager) {
         std::cout<<"BRIDGE_CLOSE_VIEW_COUNT "<<manager->GetViewsId().size()<<std::endl;
         if (viewId >= 0) manager->DestroyCefView(viewId, false);
-        // Return control to the owner; drain the asynchronous browser close
-        // before shutting down CEF. DESTROY is a request, DESTROYWINDOW is
-        // the actual browser-destruction notification from the SDK.
-        manager->GetApplication()->ExitMessageLoop();
+        // Wait for DESTROYWINDOW, the actual browser-destruction notification.
+        // DESTROY is only a request; it cannot establish shutdown readiness.
     }
     std::cout<<"BRIDGE_CLOSE_REQUEST_RETURNED"<<std::endl;
 }

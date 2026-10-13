@@ -26,6 +26,7 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
     var checks = [String: Bool]()
     var failure: String?
     var running = false, finishing = false
+    var officeRequested = false
     var started = Date(), readyDate: Date?
     let args = CommandLine.arguments
     var output: URL { URL(fileURLWithPath: args[6], isDirectory: true) }
@@ -60,7 +61,13 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
                     try JSONSerialization.data(withJSONObject: preliminary, options: [.prettyPrinted, .sortedKeys])
                         .write(to: self.output.appendingPathComponent("lazy-pdf-startup.json"))
                 } catch { self.failure = String(describing: error); self.finish(); return }
-                self.loadOffice()
+                // Unwind the original AppKit loop before entering CEF's loop.
+                // Native browser teardown must run at the owning loop level.
+                self.officeRequested = true
+                NSApp.stop(nil)
+                if let wake = NSEvent.otherEvent(with: .applicationDefined, location: .zero, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: 0, context: nil,
+                    subtype: 0, data1: 0, data2: 0) { NSApp.postEvent(wake, atStart: false) }
             }
         } catch { failure = String(describing: error); finish() }
     }
@@ -141,4 +148,7 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
 let app = FullOfficeApplication.shared
 let delegate = LazyDelegate()
 app.setActivationPolicy(.regular); app.delegate = delegate
-withExtendedLifetime(delegate) { app.run() }
+withExtendedLifetime(delegate) {
+    app.run()
+    if delegate.officeRequested { delegate.loadOffice() }
+}
