@@ -40,6 +40,8 @@ final class OfficeCoordinator {
     private var command = 0
     private var forwardResearch = false
     private var saveDestination: (URL, String?)?
+    private var unsaved = false
+    private var discarded = false
     init(runtime: OfficeRuntime, root: URL) { self.runtime = runtime; self.root = root }
     var isActive: Bool { activity.lock(); defer { activity.unlock() }; return opening || process?.isRunning == true }
     private func state(_ text: String) { DispatchQueue.main.async { self.onState?(text) } }
@@ -90,6 +92,7 @@ final class OfficeCoordinator {
                         worker.waitUntilExit()
                         self.queue.sync {
                             if !self.bytes.isEmpty { self.line(String(decoding: self.bytes, as: UTF8.self)); self.bytes.removeAll() }
+                            try? self.session?.finish(clean: worker.terminationStatus == 0 && !self.unsaved, discarded: self.discarded && worker.terminationStatus == 0)
                             try? self.log?.close(); self.log = nil
                             try? self.errorLog?.close(); self.errorLog = nil
                             DispatchQueue.main.async { self.onExit?(worker.terminationStatus) }
@@ -116,7 +119,13 @@ final class OfficeCoordinator {
         if bytes.count > 65536 { bytes.removeAll(); state("办公窗口返回的状态过长，编辑副本仍保留。") }
     }
     private func line(_ text: String) {
-        if text == "DIRTY 1" { state("有未保存的修改") }
+        if text == "DIRTY 1" {
+            unsaved = true
+            do { try session?.noteDirty() } catch { state("恢复记录未写入，当前编辑窗口仍保留。") }
+            state("有未保存的修改")
+        }
+        if text == "SESSION_CLEAN" { unsaved = false }
+        if text == "DISCARD_REQUESTED" { discarded = true }
         if text == "OPEN_FILE_REQUEST" { DispatchQueue.main.async { self.onOpen?() } }
         if text == "SAVE_AS_REQUEST" { DispatchQueue.main.async { self.onSaveAs?() } }
         guard text.hasPrefix("ORIGINAL_SAVE_REQUEST "), let sequence = Int(text.dropFirst("ORIGINAL_SAVE_REQUEST ".count)), let session else { return }

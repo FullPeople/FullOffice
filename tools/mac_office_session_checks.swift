@@ -62,10 +62,39 @@ do {
     checks["LaterSaveTargetsTheChosenNewDocument"] = try Data(contentsOf: destination) == later && Data(contentsOf: alternateSource) == original
     checks["LaterSaveKeepsNewDestinationPreviousBytes"] = try Data(contentsOf: alternate.lastBackup!) == edited
     checks["FormatChangingSaveAsRejected"] = rejected { try alternate.saveAs(to: destination.deletingPathExtension().appendingPathExtension("xlsx"), expectedHash: nil) }
+
+    // Recovery operates on retained snapshots, without overwriting originals.
+    let root = conflict.directory.deletingLastPathComponent()
+    try conflict.finish(clean: false, discarded: false)
+    let entries = try OfficeRecovery.list(root: root)
+    checks["InterruptedSessionListedForRecovery"] = entries.count == 1 && entries[0].source == conflictSource
+    let entry = entries[0]
+    let recovered = conflictSource.deletingLastPathComponent().appendingPathComponent("recovered.docx")
+    try OfficeRecovery.export(entry, to: recovered)
+    checks["RecoveryExportsExactValidatedEditedSnapshot"] = try Data(contentsOf: recovered) == edited
+    checks["RecoveryPreservesExternallyChangedOriginal"] = try Data(contentsOf: conflictSource) == external
+    checks["RecoveryRetainsSnapshotAndMetadata"] = files.fileExists(atPath: entry.payload.path) && files.fileExists(atPath: conflict.directory.appendingPathComponent("session.json").path)
+    checks["RecoveryRefusesExistingDestination"] = rejected { try OfficeRecovery.export(entry, to: recovered) }
+    checks["ExistingRecoveredBytesSurviveRejectedOverwrite"] = try Data(contentsOf: recovered) == edited
+    checks["RecoveryRefusesFormatChange"] = rejected { try OfficeRecovery.export(entry, to: recovered.deletingPathExtension().appendingPathExtension("xlsx")) }
+    try later.write(to: entry.payload)
+    let tamperedTarget = recovered.deletingLastPathComponent().appendingPathComponent("tampered.docx")
+    checks["RecoveryRejectsChangedSnapshotFingerprint"] = rejected { try OfficeRecovery.export(entry, to: tamperedTarget) }
+    checks["ChangedSnapshotCannotCreateDestination"] = !files.fileExists(atPath: tamperedTarget.path)
+    try edited.write(to: entry.payload)
+    try conflict.noteDirty()
+    checks["RecoveryRejectsChangedSessionRecord"] = rejected { try OfficeRecovery.export(entry, to: tamperedTarget) }
+    try conflict.finish(clean: true, discarded: false)
+    checks["CleanlyClosedSessionsExcludedFromRecovery"] = try OfficeRecovery.list(root: root).isEmpty
+    try conflict.noteDirty(); try conflict.finish(clean: false, discarded: true)
+    checks["ExplicitlyDiscardedSessionsExcludedFromRecovery"] = try OfficeRecovery.list(root: root).isEmpty
+    let link = root.appendingPathComponent(UUID().uuidString)
+    try files.createSymbolicLink(at: link, withDestinationURL: normal.directory)
+    checks["ExternalSessionDirectoryLinkExcluded"] = try OfficeRecovery.list(root: root).isEmpty
 } catch { failure = String(describing: error) }
-let passed = failure == nil && checks.count == 18 && checks.values.allSatisfy { $0 }
+let passed = failure == nil && checks.count == 31 && checks.values.allSatisfy { $0 }
 var report: [String: Any] = ["Passed": passed, "Checks": checks,
-    "Scope": "Real macOS file coordination and replacement, independent authored ZIPs, original bytes, backup, invalid-save rejection, external conflict, read-only, missing-file recovery and Save As; no editor/UI claim."]
+    "Scope": "Real macOS file coordination, backup, invalid-save rejection, external conflict, read-only, Save As and retained-snapshot recovery/export/lifecycle; no editor or recovery-dialog execution claim."]
 if let failure { report["Failure"] = failure }
 try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("report.json"))
 print(String(data: try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]), encoding: .utf8)!)

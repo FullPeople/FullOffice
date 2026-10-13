@@ -118,6 +118,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
     var offices: [OfficeCoordinator] = []
     var officeMessages = [ObjectIdentifier: String]()
     var productProbe: ProductProbe?
+    var recoveryBusy = false
     var officeRoot: URL {
         if let probe = productProbe { return probe.output.appendingPathComponent("sessions", isDirectory: true) }
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -164,6 +165,53 @@ final class Delegate: NSObject, NSApplicationDelegate {
         panel.allowsMultipleSelection = true
         if panel.runModal() == .OK { for url in panel.urls { openDocument(url) } }
     }
+    @objc func recoverDocuments() {
+        guard !recoveryBusy else { return }
+        if offices.contains(where: { $0.isActive }) {
+            let alert = NSAlert(); alert.messageText = "请先关闭正在编辑的文档"
+            alert.informativeText = "恢复列表只读取已经结束的编辑会话。"
+            alert.addButton(withTitle: "继续编辑"); alert.runModal(); return
+        }
+        recoveryBusy = true
+        let root = officeRoot
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let entries = try OfficeRecovery.list(root: root)
+                DispatchQueue.main.async { self.chooseRecovery(entries) }
+            } catch {
+                DispatchQueue.main.async { self.recoveryBusy = false; NSAlert(error: error).runModal() }
+            }
+        }
+    }
+    func chooseRecovery(_ entries: [OfficeRecoveryEntry]) {
+        guard !entries.isEmpty else {
+            recoveryBusy = false
+            let alert = NSAlert(); alert.messageText = "没有可恢复的文档副本"
+            alert.addButton(withTitle: "好"); alert.runModal(); return
+        }
+        let alert = NSAlert(); alert.messageText = "恢复文档副本"
+        alert.informativeText = "请选择要恢复的文档。恢复内容来自最近写入的编辑副本，可能不包含退出前尚未写入的修改。恢复时会保存为新文件。"
+        let selector = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 420, height: 28), pullsDown: false)
+        let date = DateFormatter(); date.dateStyle = .short; date.timeStyle = .short
+        for entry in entries { selector.addItem(withTitle: entry.source.lastPathComponent + " · " + date.string(from: entry.modified)) }
+        alert.accessoryView = selector
+        alert.addButton(withTitle: "恢复副本…"); alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { recoveryBusy = false; return }
+        let entry = entries[selector.indexOfSelectedItem]
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = entry.source.deletingPathExtension().lastPathComponent + "（恢复）." + entry.format
+        panel.allowedContentTypes = UTType(filenameExtension: entry.format).map { [$0] } ?? [.data]
+        panel.allowsOtherFileTypes = false
+        guard panel.runModal() == .OK, let destination = panel.url else { recoveryBusy = false; return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try OfficeRecovery.export(entry, to: destination)
+                DispatchQueue.main.async { self.recoveryBusy = false; self.openDocument(destination) }
+            } catch {
+                DispatchQueue.main.async { self.recoveryBusy = false; NSAlert(error: error).runModal() }
+            }
+        }
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         probeStage("did-finish-launching")
         let menu = NSMenu(), appMenu = NSMenu(), item = NSMenuItem()
@@ -172,6 +220,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         let fileMenu = NSMenu(title: "文件"), fileItem = NSMenuItem(title: "文件", action: nil, keyEquivalent: "")
         fileItem.submenu = fileMenu; menu.addItem(fileItem)
         fileMenu.addItem(withTitle: "打开文件…", action: #selector(openFile), keyEquivalent: "o").target = self
+        fileMenu.addItem(withTitle: "恢复文档副本…", action: #selector(recoverDocuments), keyEquivalent: "").target = self
         let edit = NSMenu(title: "编辑"), editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: "")
         editItem.submenu = edit; menu.addItem(editItem)
         edit.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
@@ -199,6 +248,11 @@ final class Delegate: NSObject, NSApplicationDelegate {
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { !offices.contains { $0.isActive } }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if recoveryBusy {
+            let alert = NSAlert(); alert.messageText = "正在读取或恢复文档副本"
+            alert.informativeText = "请等待当前操作完成后再退出。"
+            alert.addButton(withTitle: "继续等待"); alert.runModal(); return .terminateCancel
+        }
         if offices.contains(where: { $0.isActive }) {
             let alert = NSAlert(); alert.messageText = "还有正在打开或编辑的文档"
             alert.informativeText = "请等待文档打开，在文档窗口中保存或关闭后再退出 FullOffice。"

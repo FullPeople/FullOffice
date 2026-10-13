@@ -46,7 +46,7 @@ def build(upstream,root,out):
         subprocess.run(['codesign','--force','--sign','-',str(target)],check=True,timeout=30)
     sources=root/'src/FullOffice.Mac'
     subprocess.run(['xcrun','swiftc','-swift-version','5','-O',str(sources/'OfficeFileSession.swift'),str(sources/'OfficeCoordinator.swift'),
-        str(sources/'ProductProbe.swift'),str(sources/'main.swift'),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True,timeout=120)
+        str(sources/'OfficeRecovery.swift'),str(sources/'ProductProbe.swift'),str(sources/'main.swift'),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True,timeout=120)
     iconset=out/'FullOffice.iconset';iconset.mkdir()
     for size in [16,32,128,256,512]:
         for retina in [False,True]:

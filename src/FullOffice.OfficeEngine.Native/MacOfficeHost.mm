@@ -291,6 +291,7 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
         if (ok && [name isKindOfClass:[NSString class]]) [window setTitle:[name stringByAppendingString:@" — FullOffice"]];
         [window setDocumentEdited:nativeDirty || originalUncommitted];
         emit(ok ? "ORIGINAL_SAVE_ACK OK" : "ORIGINAL_SAVE_ACK FAILED");
+        if (ok && !nativeDirty && !originalUncommitted) emit("SESSION_CLEAN");
         if (closingAfterSave) {
             closingAfterSave = false;
             if (ok && !nativeDirty && !originalUncommitted) [NSApp terminate:nil];

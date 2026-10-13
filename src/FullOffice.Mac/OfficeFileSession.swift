@@ -46,6 +46,8 @@ final class OfficeFileSession {
     private(set) var originalHash: String
     private(set) var lastSnapshot: URL?
     private(set) var lastBackup: URL?
+    private var lastSnapshotHash: String?
+    private var recordedState = ""
     private let files = FileManager.default
 
     static func hash(_ url: URL) throws -> String {
@@ -86,12 +88,19 @@ final class OfficeFileSession {
     private func record(state: String) throws {
         var value: [String: Any] = ["Version": 1, "Source": source.path, "OriginalSHA256": originalHash, "State": state,
             "Working": working.lastPathComponent]
-        if let snapshot = lastSnapshot { value["Snapshot"] = snapshot.lastPathComponent; value["SnapshotSHA256"] = try Self.hash(snapshot) }
+        if let snapshot = lastSnapshot, let hash = lastSnapshotHash { value["Snapshot"] = snapshot.lastPathComponent; value["SnapshotSHA256"] = hash }
         if let backup = lastBackup { value["Backup"] = backup.path }
         try JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys])
             .write(to: directory.appendingPathComponent("session.json"), options: .atomic)
+        recordedState = state
     }
-    private func tool(_ arguments: [String], maximum: Int = 64 * 1024 * 1024) throws -> Data {
+    func noteDirty() throws {
+        if recordedState != "dirty" { try record(state: "dirty") }
+    }
+    func finish(clean: Bool, discarded: Bool) throws {
+        try record(state: discarded ? "discarded" : clean ? "closed" : "interrupted")
+    }
+    private static func tool(_ arguments: [String], maximum: Int = 64 * 1024 * 1024) throws -> Data {
         let process = Process(), output = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")
         process.arguments = arguments
@@ -111,9 +120,9 @@ final class OfficeFileSession {
         }
         return data
     }
-    private func validate(_ url: URL) throws {
+    static func validate(_ url: URL, format kind: String) throws {
         try Self.regular(url)
-        let kind = source.pathExtension.lowercased()
+        guard formats.contains(kind) else { throw OfficeSessionError.message("恢复副本的文件格式不受支持。") }
         if kind == "rtf" {
             let handle = try FileHandle(forReadingFrom: url); defer { try? handle.close() }
             guard let prefix = try handle.read(upToCount: 5), prefix == Data("{\\rtf".utf8) else { throw OfficeSessionError.message("暂存 RTF 文档无效，修改仍保留。") }
@@ -159,8 +168,9 @@ final class OfficeFileSession {
         try files.copyItem(at: working, to: snapshot)
         let savedHash = try Self.hash(snapshot)
         guard try Self.hash(working) == savedHash else { throw OfficeSessionError.message("文档仍在写入，请稍后再保存；原文件未更改。") }
-        try validate(snapshot)
+        try Self.validate(snapshot, format: source.pathExtension.lowercased())
         lastSnapshot = snapshot
+        lastSnapshotHash = savedHash
         try record(state: "saved-working-copy")
         return snapshot
     }

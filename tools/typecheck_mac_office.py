@@ -5,7 +5,7 @@ import subprocess,shutil,sys
 root=Path(__file__).resolve().parents[1]
 work=root/'.cache/mac-office-typecheck';work.mkdir(parents=True,exist_ok=False)
 sources=root/'src/FullOffice.Mac'
-shared=[str(sources/'OfficeFileSession.swift'),str(sources/'OfficeCoordinator.swift')]
+shared=[str(sources/'OfficeFileSession.swift'),str(sources/'OfficeCoordinator.swift'),str(sources/'OfficeRecovery.swift')]
 subprocess.run(['xcrun','swiftc','-typecheck','-swift-version','5',*shared,str(sources/'ProductProbe.swift'),str(sources/'main.swift')],check=True,timeout=90)
 for name in ['ProcessOfficeProbe.swift','mac_office_session_checks.swift']:
     original=sources/name if name=='ProcessOfficeProbe.swift' else root/'tools'/name
