@@ -178,9 +178,9 @@ final class Delegate: NSObject, NSApplicationDelegate {
                 }
                 checks["RenderedWindowCapture"] = FileManager.default.fileExists(atPath: output.appendingPathComponent("window.png").path)
                 var markerPixels = 0
-                if let image = NSBitmapImageRep(contentsOf: output.appendingPathComponent("window.png")), let window = reader.window {
+                if let data = try? Data(contentsOf: output.appendingPathComponent("window.png")), let image = NSBitmapImageRep(data: data), let window = reader.window {
                     let ratio = CGFloat(image.pixelsWide) / window.frame.width
-                    let start = max(0, Int(reader.pdf.convert(.zero, to: nil).x * ratio) + 12)
+                    let start = max(0, Int(reader.pdf.convert(NSPoint.zero, to: nil).x * ratio) + 12)
                     for y in Int(80 * ratio)..<max(Int(80 * ratio), image.pixelsHigh - 12) {
                         for x in start..<max(start, image.pixelsWide - 12) {
                             if let color = image.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB), color.redComponent < 0.4 && color.greenComponent < 0.4 && color.blueComponent > 0.7 { markerPixels += 1 }
