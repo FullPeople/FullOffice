@@ -51,8 +51,8 @@ try:
                 '-o','disassemble -n "CAscApplicationManager::DestroyCefView(int, bool)" -c 120'],
                 capture_output=True,text=True,timeout=40)
             (out/f'core-{index}-close-disassembly.txt').write_text(disassembly.stdout+disassembly.stderr,encoding='utf-8')
-            for label,method,count in [('view-apply','CCefView::Apply(NSEditorApi::CAscMenuEvent*)',400),
-                                       ('browser-close','CCefView_Private::CloseBrowser(bool)',120)]:
+            for label,method,count in [('view-apply','CCefView::Apply(NSEditorApi::CAscMenuEvent*)',480),
+                                       ('browser-close','CCefView_Private::CloseBrowser(bool)',160)]:
                 inspected=subprocess.run(['lldb','--batch','-o','target create '+shlex.quote(str(core)),
                     '-o',f'disassemble -n "{method}" -c {count}'],capture_output=True,text=True,timeout=40)
                 (out/f'core-{index}-{label}-disassembly.txt').write_text(inspected.stdout+inspected.stderr,encoding='utf-8')
