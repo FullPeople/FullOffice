@@ -58,7 +58,8 @@ def run(app,root,out):
             # Do not let a reference/debug run turn this failed app check green.
             host=app/'Contents/Helpers/FullOfficeOfficeHost.app'
             resources=host/'Contents/Resources';debug=case/'worker-debug';debug.mkdir()
-            command=['lldb','--batch','-o','breakpoint set --name exit --name _exit','-o','run',
+            command=['lldb','--batch','-k','thread backtrace all','-k','image list -o -f',
+                '-o','breakpoint set --name exit --name _exit','-o','run',
                 '-o','thread backtrace all','-o','quit','--',str(host/'Contents/MacOS/FullOfficeOfficeHost'),
                 str(resources),str(debug/'profile'),str(working),str(debug),str(resources/'editors/web-apps/apps/api/documents/index.html')]
             with (case/'worker-exit-stack.log').open('wb') as log:

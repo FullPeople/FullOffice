@@ -5,6 +5,7 @@
 #include <mutex>
 #include <atomic>
 #include <fstream>
+#include <vector>
 #include "mac_application.h"
 #include "mac_cefview.h"
 
@@ -308,8 +309,21 @@ int main(int argc, const char* argv[]) {
     settings.system_templates_path = officeWideString([NSString stringWithUTF8String:(resource / "converter/templates").c_str()]);
     settings.macroses_support = false; settings.plugins_support = false; settings.country = "CN";
     manager->SetEventListener(&listener);
+    // CEF derives its default bundle from the outermost .app in the executable
+    // path. Our editor is nested inside the PDF app, so give it its own bundle
+    // and framework explicitly. These are CEF's supported Mac path switches.
+    // https://github.com/chromiumembedded/cef/blob/6533/libcef/common/util_mac.mm
+    const std::string mainBundle = [[[NSBundle mainBundle] bundlePath] UTF8String];
+    const auto cefFramework = std::filesystem::path(mainBundle) / "Contents/Frameworks/Chromium Embedded Framework.framework";
+    if (!std::filesystem::is_directory(cefFramework)) return 2;
+    std::vector<std::string> cefArguments;
+    for (int index = 0; index < argc; ++index) cefArguments.emplace_back(argv[index]);
+    cefArguments.emplace_back("--main-bundle-path=" + mainBundle);
+    cefArguments.emplace_back("--framework-dir-path=" + cefFramework.string());
+    std::vector<const char*> cefArgv;
+    for (const auto& argument : cefArguments) cefArgv.push_back(argument.c_str());
     emit("HOST_BEFORE_CEF_START");
-    [worker Start:argc argv:argv];
+    [worker Start:static_cast<int>(cefArgv.size()) argv:cefArgv.data()];
     emit("CEF_INITIALIZED");
     emit(std::string("APPLICATION_CLASS ") + [NSStringFromClass([NSApp class]) UTF8String]);
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
