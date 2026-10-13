@@ -1,0 +1,39 @@
+name: Native macOS reading research preview
+on:
+  push:
+    branches: [codex/macos-native-reader-20261013]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build native bundle and preserve selected application icon
+        run: python3 tools/build_macos_preview.py
+      - name: Exercise actual macOS PDFKit and application window
+        run: |
+          xcrun swift tools/create_mac_probe_fixture.swift artifacts/macos-preview/fixture.pdf
+          shasum -a 256 artifacts/macos-preview/fixture.pdf > artifacts/macos-preview/fixture-before.sha
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,subprocess
+          root=Path('artifacts/macos-preview')
+          subprocess.run([str(root/'FullOffice.app/Contents/MacOS/FullOffice'),'--ui-probe',str(root/'fixture.pdf'),str(root/'probe')],check=True,timeout=35)
+          report=json.loads((root/'probe/report.json').read_text())
+          assert report['Passed'],report
+          PY
+          shasum -a 256 artifacts/macos-preview/fixture.pdf > artifacts/macos-preview/fixture-after.sha
+          cmp artifacts/macos-preview/fixture-before.sha artifacts/macos-preview/fixture-after.sha
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: macos-reading-preview-${{ matrix.runner }}-${{ github.run_id }}
+          path: artifacts/macos-preview/
+          if-no-files-found: warn
