@@ -28,6 +28,7 @@ public sealed partial class WorkspaceWindow : Window
     PdfReaderView? active;
     bool closingApproved,closingBusy;
     public bool RadialEnabled=>recent.RadialEnabled;
+    public bool OfficeAutoSaveEnabled=>recent.OfficeAutoSave && !IsProbe && !closingBusy && !closingApproved;
     public bool IsProbe=>smokeDirectory!=null||featuresDirectory!=null||startupArgs.Contains("--workspace-probe")||startupArgs.Contains("--tabs-probe")||startupArgs.Contains("--revision-probe")||startupArgs.Contains("--saving-probe")||startupArgs.Contains("--text-probe");
     public WorkspaceWindow(string? file,string? smoke,bool probe,string? features,string[] args){
         initialFile=file;smokeDirectory=smoke;readOnlyProbe=probe;featuresDirectory=features;startupArgs=args;
@@ -43,6 +44,8 @@ public sealed partial class WorkspaceWindow : Window
         var updates=new MenuItem{Header="检查更新…"};updates.Click+=async(_,_)=>await CheckSoftwareUpdates(false);options.Items.Add(updates);
         var recoveryMenu = new MenuItem { Header = "恢复编辑会话…" };
         recoveryMenu.Click += async (_, _) => await ShowOfficeRecovery(); options.Items.Add(recoveryMenu);
+        var autoSaveMenu = new MenuItem { Header = "文档与表格每 2 分钟自动保存到原文件", IsCheckable = true, IsChecked = recent.OfficeAutoSave };
+        autoSaveMenu.Click += (_, _) => { recent.OfficeAutoSave = autoSaveMenu.IsChecked; recent.Save(); }; options.Items.Add(autoSaveMenu);
         var brand=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Center};brand.Children.Add(new Image{Source=Icon,Width=22,Height=22,Margin=new(0,0,11,0)});brand.Children.Add(new TextBlock{Text="FullOffice",FontWeight=FontWeights.SemiBold,FontSize=16,VerticalAlignment=VerticalAlignment.Center});brand.Children.Add(windowSubtitle);header.Children.Add(brand);
         var tabArea=new DockPanel{Background=new SolidColorBrush(Color.FromRgb(246,248,252)),LastChildFill=true};Grid.SetRow(tabArea,1);root.Children.Add(tabArea);var plus=ActionButton("＋",()=>{ShowHome();return Task.CompletedTask;});plus.ToolTip="开始阅读 · Ctrl+T";DockPanel.SetDock(plus,Dock.Right);tabArea.Children.Add(plus);tabArea.Children.Add(new ScrollViewer{Content=tabStrip,HorizontalScrollBarVisibility=ScrollBarVisibility.Hidden,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled,Margin=new(12,4,8,0)});
         var content=new Grid();Grid.SetRow(content,2);root.Children.Add(content);content.Children.Add(readerSurface);content.Children.Add(homeSurface);BuildHome();RefreshTabs();

@@ -20,6 +20,9 @@ public sealed class OfficeDocumentView : EditorDocumentView
     readonly TextBlock status = new() { Text = "正在打开文档…", Margin = new(14, 7, 14, 7), Foreground = Brushes.SlateGray };
     readonly CancellationTokenSource lifetime = new();
     readonly SemaphoreSlim saveGate = new(1, 1);
+    readonly SemaphoreSlim operationGate = new(1, 1);
+    readonly System.Windows.Threading.DispatcherTimer autoSaveTimer = new() { Interval = TimeSpan.FromMinutes(2) };
+    int automaticallySavedRevision = -1;
     readonly Grid surface = new();
     NativeOfficeHost? host;
     Process? process;
@@ -45,6 +48,11 @@ public sealed class OfficeDocumentView : EditorDocumentView
         credits.Click += (_, _) => OfficeLicenses.Show(Owner); DockPanel.SetDock(credits, Dock.Right); footer.Children.Add(credits);
         footer.Children.Add(status); root.Children.Add(surface);
         Loaded += async (_, _) => { if (!started && !disposed) { started = true; await OpenNative(); } };
+        autoSaveTimer.Tick += async (_, _) => {
+            if (disposed || !Owner.OfficeAutoSaveEnabled || !CanSave || !nativeDirty || automaticallySavedRevision == revision) return;
+            int currentRevision = revision;
+            if (await SaveAsync()) automaticallySavedRevision = currentRevision;
+        };
     }
     async Task OpenNative()
     {
@@ -91,7 +99,7 @@ public sealed class OfficeDocumentView : EditorDocumentView
                     if (disposed) return;
                     if (line.StartsWith("HWND ", StringComparison.Ordinal) && long.TryParse(line.AsSpan(5), out long value)) {
                         editorWindow = new(value); host?.AttachEditor(editorWindow); ready.TrySetResult(); if (IsVisible) Activate(); Changed?.Invoke();
-                    } else if (line == "VIEW_LOADED") { status.Text = ""; }
+                    } else if (line == "VIEW_LOADED") { status.Text = ""; autoSaveTimer.Start(); }
                     else if (line == "DIRTY 1") { nativeDirty = true; IsModified = true; ++revision; status.Text = "尚未保存"; Changed?.Invoke(); }
                     else if (line == "DIRTY 0") { nativeDirty = false; }
                     else if (line == "SAVED OK") {
@@ -101,7 +109,7 @@ public sealed class OfficeDocumentView : EditorDocumentView
                             nativeSave?.TrySetException(error); Changed?.Invoke(); return;
                         }
                         if (nativeSave != null) nativeSave.TrySetResult(true);
-                        else { IsModified = true; await CommitWorkingFile(); }
+                        else { IsModified = true; _ = CommitNativeSave(); }
                     } else if (line == "SAVED CANCEL") { nativeSave?.TrySetResult(false); status.Text = "保存未完成，修改仍保留。"; }
                     else if (line.StartsWith("COMMAND ", StringComparison.Ordinal)) WorkspaceCommandRequested?.Invoke(line[8..]);
                 }).Task.Unwrap();
@@ -118,20 +126,38 @@ public sealed class OfficeDocumentView : EditorDocumentView
     async Task<bool> FlushNative()
     {
         if (editorWindow == 0 || process is null || process.HasExited) throw new IOException("文档编辑器未运行，当前会话已保留。");
-        if (!nativeDirty && File.Exists(workingFile)) return true;
-        nativeSave = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (nativeSave == null && !nativeDirty && File.Exists(workingFile)) return true;
+        // Keep a timed-out request until its response arrives, so a late completion cannot be mistaken for a new save.
+        nativeSave ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var pending = nativeSave;
         try {
-            if (!PostMessage(editorWindow, 0x8000 + 20, 0, 0)) throw new IOException("无法提交保存请求。");
-            return await nativeSave.Task.WaitAsync(TimeSpan.FromSeconds(35), lifetime.Token);
-        } finally { nativeSave = null; }
+            if (!pending.Task.IsCompleted && !nativeSavePosted) {
+                if (!PostMessage(editorWindow, 0x8000 + 20, 0, 0)) throw new IOException("无法提交保存请求。");
+                nativeSavePosted = true;
+            }
+            return await pending.Task.WaitAsync(TimeSpan.FromSeconds(35), lifetime.Token);
+        } finally { if (pending.Task.IsCompleted) { nativeSave = null; nativeSavePosted = false; } }
+    }
+    bool nativeSavePosted;
+    async Task CommitNativeSave()
+    {
+        bool acquired = false;
+        try {
+            await operationGate.WaitAsync(lifetime.Token); acquired = true;
+            if (!disposed) await CommitWorkingFile();
+        } catch (OperationCanceledException) when (disposed) { }
+        catch (Exception error) { IsModified = true; status.Text = "保存失败，修改仍保留：" + error.Message; Changed?.Invoke(); }
+        finally { if (acquired) operationGate.Release(); }
     }
     public override async Task<bool> SaveAsync()
     {
-        if (disposed || IsSaving || editorWindow == 0) return false;
+        if (disposed || editorWindow == 0) return false;
+        await operationGate.WaitAsync(lifetime.Token);
+        if (disposed) { operationGate.Release(); return false; }
         IsSaving = true; Changed?.Invoke();
-        try { if (!await FlushNative()) return false; return await CommitWorkingFile(true); }
+        try { await CheckOriginal(new FileInfo(FilePath)); if (!await FlushNative()) return false; return await CommitWorkingFile(true); }
         catch (Exception error) { IsModified = true; status.Text = "保存失败，修改仍保留：" + error.Message; return false; }
-        finally { IsSaving = false; Changed?.Invoke(); }
+        finally { IsSaving = false; operationGate.Release(); Changed?.Invoke(); }
     }
     async Task<bool> CommitWorkingFile(bool alreadySaving = false)
     {
@@ -179,6 +205,9 @@ public sealed class OfficeDocumentView : EditorDocumentView
         var dialog = new SaveFileDialog { FileName = Path.GetFileName(FilePath), Filter = "当前格式|*" + Path.GetExtension(FilePath), OverwritePrompt = true };
         if (dialog.ShowDialog(Owner) != true) return;
         if (Path.GetFullPath(dialog.FileName).Equals(FilePath, StringComparison.OrdinalIgnoreCase)) { await SaveAsync(); return; }
+        await operationGate.WaitAsync(lifetime.Token);
+        if (disposed) { operationGate.Release(); return; }
+        IsSaving = true; Changed?.Invoke();
         string? temporary = null;
         try { if (!await FlushNative()) return;
             string destination = Path.GetFullPath(dialog.FileName);
@@ -191,13 +220,14 @@ public sealed class OfficeDocumentView : EditorDocumentView
             else File.Move(temporary, destination);
             temporary = null; status.Text = "已导出副本";
         } catch (Exception error) { status.Text = "导出失败，修改仍保留：" + error.Message; }
-        finally { if (temporary != null) { try { File.Delete(temporary); } catch (IOException) { } } }
+        finally { if (temporary != null) { try { File.Delete(temporary); } catch (IOException) { } }
+            IsSaving = false; operationGate.Release(); Changed?.Invoke(); }
     }
     public override void Activate() { host?.Focus(); if (editorWindow != 0) PostMessage(editorWindow, 0x8000 + 22, 0, 0); }
     public override void Deactivate() { if (editorWindow != 0) PostMessage(editorWindow, 0x8000 + 23, 0, 0); }
     public override void Dispose()
     {
-        if (disposed) return; retireOnClose = !IsModified || discarded; disposed = true; lifetime.Cancel(); nativeSave?.TrySetCanceled();
+        if (disposed) return; autoSaveTimer.Stop(); retireOnClose = !IsModified || discarded; disposed = true; lifetime.Cancel(); nativeSave?.TrySetCanceled();
         if (editorWindow != 0) PostMessage(editorWindow, 0x0010, 0, 0);
         closeTask = CloseHostAfterExit();
     }

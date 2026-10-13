@@ -11,6 +11,13 @@ static class OfficeRecoveryProbe
         var checks = new Dictionary<string, bool>();
         try {
             OfficeFormatProbe.Check(output, checks);
+            string settingsRoot = Path.Combine(output, "settings"); Directory.CreateDirectory(settingsRoot);
+            string settingsFile = Path.Combine(settingsRoot, "reading-state.json");
+            File.WriteAllText(settingsFile, "{\"Version\":1,\"RadialEnabled\":false,\"Recent\":[]}");
+            var preferences = new RecentStore(settingsRoot);
+            checks["ExistingPreferencesKeepAutomaticSavingDisabled"] = !preferences.OfficeAutoSave && !preferences.RadialEnabled;
+            preferences.OfficeAutoSave = true; preferences.Save();
+            checks["AutomaticSavingPreferencePersists"] = new RecentStore(settingsRoot).OfficeAutoSave;
             foreach (string extension in new[] { ".docx", ".xlsx", ".pptx" }) {
                 string blank = Path.Combine(output, "blank" + extension); NewDocumentFiles.Write(blank, extension);
                 OfficePackage.Validate(blank, blank); checks["BlankPackageValid" + extension] = true;
