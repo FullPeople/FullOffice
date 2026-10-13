@@ -22,6 +22,8 @@ CAscApplicationManager* createManager() { return new CAscApplicationManager(); }
 class Listener final : public NSEditorApi::CAscCefMenuEventListener {
     void OnEvent(NSEditorApi::CAscCefMenuEvent* event) override {
         if (event) {
+            if (event->m_nType != ASC_MENU_EVENT_TYPE_CEF_CHECK_KEYBOARD)
+                std::cout<<"BRIDGE_EVENT "<<event->m_nType<<std::endl;
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_CHECK_KEYBOARD && manager && !keyboardPending.exchange(true))
                 dispatch_async(dispatch_get_main_queue(), ^{ if (manager) manager->CheckKeyboard(); keyboardPending=false; });
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_EXECUTE_COMMAND && event->m_pData) {
@@ -100,6 +102,7 @@ extern "C" void fo_office_run() {
 }
 extern "C" void fo_office_close() {
     if (manager) manager->DestroyCefView(-1);
+    std::cout<<"BRIDGE_CLOSE_REQUEST_RETURNED"<<std::endl;
 }
 extern "C" int fo_office_ready() {
     if (editor && !ready && !destroyed)

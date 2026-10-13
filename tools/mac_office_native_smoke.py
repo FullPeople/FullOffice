@@ -73,7 +73,16 @@ def exercise(app,out,root,kind='docx',lazy=False):
         with (out/'lazy-host.log').open('wb') as log:
             process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(pdf),str(bridge),str(resources),str(work/'lazy-profile'),str(working),str(out)],stdout=log,stderr=subprocess.STDOUT)
             try:code=process.wait(timeout=120)
-            except subprocess.TimeoutExpired:process.kill();process.wait(timeout=15);code=process.returncode
+            except subprocess.TimeoutExpired:
+                # This still-running, unreaped Popen child is owned by this test.
+                # Observe its live hang before terminating only that child.
+                with (out/'lazy-timeout-stack.log').open('wb') as diagnostic:
+                    try:
+                        subprocess.run(['lldb','--batch','-p',str(process.pid),'-o','thread backtrace all',
+                            '-o','detach','-o','quit'],stdout=diagnostic,stderr=subprocess.STDOUT,timeout=20)
+                    except subprocess.TimeoutExpired:diagnostic.write(b'Owned live-stack observation deadline reached\n')
+                if process.poll() is None:process.kill()
+                process.wait(timeout=15);code=process.returncode
         crashes=[]
         for engine_log in (work/'lazy-profile').rglob('log.log'):
             shutil.copy2(engine_log,out/'lazy-engine.log')
