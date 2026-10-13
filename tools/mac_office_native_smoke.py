@@ -89,7 +89,7 @@ def exercise(app,out,root,kind='docx',lazy=False):
         (out/'lazy-owned-crashes.json').write_text(json.dumps(crashes,indent=2))
         if code in (-5,-6,-11):
             debug_profile=work/'lazy-debug-profile';debug_output=out/'lazy-debug';debug_output.mkdir()
-            commands=['lldb','--batch','-o','run','-o','thread backtrace all','-o','quit','--',str(mac/'FullOfficeOfficeHost'),
+            commands=['lldb','--batch','-o','run','-k','thread backtrace all','-k','quit','--',str(mac/'FullOfficeOfficeHost'),
                 str(pdf),str(bridge),str(resources),str(debug_profile),str(working),str(debug_output)]
             with (out/'lazy-debugger.log').open('wb') as log:
                 try:subprocess.run(commands,stdout=log,stderr=subprocess.STDOUT,timeout=120)
