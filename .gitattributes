@@ -11,3 +11,8 @@ tests/fixtures/*.manifest -text
 src/FullTools.Distribution/third_party/miniz/miniz.* -text
 src/FullOffice.OfficeEngine.Native/third_party/** -text
 src/FullOffice.Windows/Assets/ONLYOFFICE-logo.svg -text
+src/FullOffice.Windows/Assets/Templates/*.pptx binary
+src/FullOffice.Windows/ocr-data/*.traineddata binary
+src/FullOffice.Windows/ocr-data/LICENSE -text
+licenses/ocr/* -text
+licenses/python-pptx-template-MIT.txt -text
