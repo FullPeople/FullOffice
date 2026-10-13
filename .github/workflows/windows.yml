@@ -20,6 +20,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Native helper configuration failed' }
           cmake --build .cache/distribution-build --config Release --parallel 2
           if ($LASTEXITCODE -ne 0) { throw 'Native helper build failed' }
+      - name: Verify Office recovery boundaries
+        shell: pwsh
+        run: |
+          $out = Join-Path $PWD 'artifacts/office-recovery'
+          $process = Start-Process 'artifacts/app/FullOffice.exe' -ArgumentList @('--office-recovery-probe',$out) -PassThru
+          if (-not $process.WaitForExit(30000)) { Stop-Process -Id $process.Id; throw 'Owned recovery probe timed out' }
+          if ($process.ExitCode -ne 0) { throw 'Office recovery probe failed' }
+          $report = Get-Content (Join-Path $out 'report.json') -Raw | ConvertFrom-Json
+          if ($report.Passed -ne $true) { throw 'Office recovery report failed' }
       - name: Compile pinned native Office API bridge
         shell: pwsh
         run: |

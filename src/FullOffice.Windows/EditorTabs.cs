@@ -70,6 +70,7 @@ public sealed partial class WorkspaceWindow
     async Task<bool> CloseEditor(EditorDocumentView view)
     {
         if (!editors.Contains(view) || !await view.ConfirmClose()) return false;
+        await view.CloseAsync();
         int index = editors.IndexOf(view); bool selected = activeEditor == view;
         closedFiles.Push(view.FilePath); editors.Remove(view); readerSurface.Children.Remove(view); view.Dispose();
         if (selected) { activeEditor = null; if (editors.Count > 0) SelectEditor(editors[Math.Clamp(index - 1, 0, editors.Count - 1)]); else if (readers.Count > 0) SelectReader(readers[^1]); else ShowHome(); }

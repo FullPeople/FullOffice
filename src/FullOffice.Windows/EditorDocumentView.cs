@@ -20,6 +20,7 @@ public abstract class EditorDocumentView : UserControl, IDisposable
     public abstract Task ExportAsync();
     public virtual void Activate() { }
     public virtual void Deactivate() { }
+    protected virtual void DiscardChanges() { }
     public async Task<bool> ConfirmClose()
     {
         if (IsSaving) return false;
@@ -27,7 +28,9 @@ public abstract class EditorDocumentView : UserControl, IDisposable
         SelectRequested?.Invoke();
         var answer = MessageBox.Show(Owner, $"“{Path.GetFileName(FilePath)}”还有未保存的修改。\n选择“是”保存，“否”放弃修改，或“取消”继续编辑。",
             "关闭标签页", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
-        return answer == MessageBoxResult.No || answer == MessageBoxResult.Yes && await SaveAsync();
+        if (answer == MessageBoxResult.No) { DiscardChanges(); return true; }
+        return answer == MessageBoxResult.Yes && await SaveAsync();
     }
     public abstract void Dispose();
+    public virtual Task CloseAsync() { Dispose(); return Task.CompletedTask; }
 }

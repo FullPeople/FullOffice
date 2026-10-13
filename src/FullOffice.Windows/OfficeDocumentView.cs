@@ -29,6 +29,10 @@ public sealed class OfficeDocumentView : EditorDocumentView
     long originalLength;
     DateTime originalWrite;
     string session = "", workingFile = "";
+    readonly OfficeRecoveryStore recovery = new();
+    FileStream? sessionLease;
+    bool discarded, retireOnClose;
+    Task closeTask = Task.CompletedTask;
     bool started, disposed, nativeDirty;
     int revision;
     public override bool CanSave => base.CanSave && !disposed && editorWindow != 0 && process is { HasExited: false };
@@ -58,12 +62,13 @@ public sealed class OfficeDocumentView : EditorDocumentView
             originalHash = await Task.Run(() => Program.HashFile(FilePath), lifetime.Token);
             string sessions = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FullOffice", "EditingSessions");
             session = Path.Combine(sessions, Guid.NewGuid().ToString("N")); Directory.CreateDirectory(Path.Combine(session, "document"));
+            sessionLease = recovery.Acquire(session);
             workingFile = Path.Combine(session, "document", Path.GetFileName(FilePath));
             await CopyFileAsync(FilePath, workingFile);
             if (!originalHash.SequenceEqual(await Task.Run(() => Program.HashFile(workingFile), lifetime.Token)))
                 throw new IOException("文件在打开过程中发生了变化，请重新打开。");
             File.SetAttributes(workingFile, FileAttributes.Normal);
-            await File.WriteAllTextAsync(Path.Combine(session, "session.json"), JsonSerializer.Serialize(new { Source = FilePath, OpenedUtc = DateTime.UtcNow }), lifetime.Token);
+            await recovery.InitializeAsync(session, FilePath, 0, 0);
             host = new NativeOfficeHost(); surface.Children.Add(host);
             await host.HandleReady;
             var start = new ProcessStartInfo(executable) { UseShellExecute = false, CreateNoWindow = true,
@@ -71,6 +76,7 @@ public sealed class OfficeDocumentView : EditorDocumentView
             foreach (string value in new[] { engine, Path.Combine(session, "profile"), workingFile, host.NativeHandle.ToInt64().ToString() }) start.ArgumentList.Add(value);
             start.Environment["PATH"] = runtime + Path.PathSeparator + engine + Path.PathSeparator + Path.Combine(engine, "converter") + Path.PathSeparator + (start.Environment["PATH"] ?? "");
             process = Process.Start(start) ?? throw new IOException("无法启动文档编辑器。");
+            await recovery.InitializeAsync(session, FilePath, process.Id, process.StartTime.ToUniversalTime().Ticks);
             process.EnableRaisingEvents = true;
             process.Exited += (_, _) => Dispatcher.BeginInvoke(() => { if (!disposed) { ready.TrySetResult(); nativeSave?.TrySetResult(false); status.Text = "编辑器已退出。当前会话文件已保留。"; Changed?.Invoke(); } });
             _ = ReadOutput(process.StandardOutput);
@@ -89,6 +95,11 @@ public sealed class OfficeDocumentView : EditorDocumentView
                     else if (line == "DIRTY 1") { nativeDirty = true; IsModified = true; ++revision; status.Text = "尚未保存"; Changed?.Invoke(); }
                     else if (line == "DIRTY 0") { nativeDirty = false; }
                     else if (line == "SAVED OK") {
+                        try { await recovery.SnapshotSavedAsync(session, workingFile); }
+                        catch (Exception error) {
+                            IsModified = true; status.Text = "恢复记录更新失败，临时文件已保留：" + error.Message;
+                            nativeSave?.TrySetException(error); Changed?.Invoke(); return;
+                        }
                         if (nativeSave != null) nativeSave.TrySetResult(true);
                         else { IsModified = true; await CommitWorkingFile(); }
                     } else if (line == "SAVED CANCEL") { nativeSave?.TrySetResult(false); status.Text = "保存未完成，修改仍保留。"; }
@@ -195,10 +206,12 @@ public sealed class OfficeDocumentView : EditorDocumentView
     public override void Deactivate() { if (editorWindow != 0) PostMessage(editorWindow, 0x8000 + 23, 0, 0); }
     public override void Dispose()
     {
-        if (disposed) return; disposed = true; lifetime.Cancel(); nativeSave?.TrySetCanceled();
+        if (disposed) return; retireOnClose = !IsModified || discarded; disposed = true; lifetime.Cancel(); nativeSave?.TrySetCanceled();
         if (editorWindow != 0) PostMessage(editorWindow, 0x0010, 0, 0);
-        _ = CloseHostAfterExit();
+        closeTask = CloseHostAfterExit();
     }
+    public override Task CloseAsync() { Dispose(); return closeTask; }
+    protected override void DiscardChanges() { discarded = true; }
     async Task CloseHostAfterExit()
     {
         try { if (process != null) await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(20)); }
@@ -206,8 +219,14 @@ public sealed class OfficeDocumentView : EditorDocumentView
             // The process belongs exclusively to this document view; preserve its recovery files.
             try { process?.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
         }
-        finally { await Dispatcher.InvokeAsync(() => host?.Dispose()); }
-        // Keep session files for recovery; session retirement will be handled by the recovery interface.
+        finally {
+            await Dispatcher.InvokeAsync(() => host?.Dispose());
+            sessionLease?.Dispose(); sessionLease = null;
+            if (retireOnClose && session.Length > 0) {
+                try { recovery.Retire(session); }
+                catch (Exception error) { Debug.WriteLine("Session retirement deferred: " + error.Message); }
+            }
+        }
     }
     [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)] static extern bool PostMessage(nint hwnd, uint message, nint wparam, nint lparam);
 }
