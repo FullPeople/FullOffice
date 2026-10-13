@@ -118,6 +118,9 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
         readiness?.invalidate(); timer?.invalidate()
         checks["ActualPDFCompositorCapture"] = capture(pdfWindow, "lazy-pdf-window.png")
         checks["ActualOfficeCompositorCapture"] = capture(officeWindow, "lazy-office-window.png")
+        // Exercise the actual parent-window close lifecycle before retiring
+        // the embedded editor, as a user closing the Office window would.
+        officeWindow?.close()
         fputs("LAZY_CLOSE_REQUEST\n", stderr)
         if running { closeOffice?(); return }
         complete()

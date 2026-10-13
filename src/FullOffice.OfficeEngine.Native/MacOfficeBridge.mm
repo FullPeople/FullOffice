@@ -12,6 +12,7 @@ NSAscApplicationWorker* worker = nil;
 CAscApplicationManager* manager = nullptr;
 CCefViewEditor* editor = nullptr;
 CCefViewWrapper* wrapper = nullptr;
+int viewId = -1;
 std::atomic<bool> ready{false}, dirty{false}, saved{false}, keyboardPending{false}, destroyed{false};
 std::wstring bridgeWideString(const char* text) {
     NSString* value = [NSString stringWithUTF8String:text];
@@ -78,6 +79,7 @@ extern "C" int fo_office_attach(void* parent, const char* document) {
     if (!manager || editor || !std::filesystem::is_regular_file(document)) return 0;
     wrapper=new CCefViewWrapper((__bridge NSView*)parent); wrapper->resizeEvent();
     editor=manager->CreateCefEditor(wrapper); if (!editor) return 0;
+    viewId=editor->GetId();
     wrapper->m_pCefView=editor; ready=false; dirty=false; saved=false; destroyed=false;
     auto path=bridgeWideString(document);
     editor->OpenLocalFile(path,CAscApplicationManager::GetFileFormatByExtentionForSave(path),L"lang=zh-CN");
@@ -103,7 +105,7 @@ extern "C" void fo_office_run() {
 extern "C" void fo_office_close() {
     if (manager) {
         std::cout<<"BRIDGE_CLOSE_VIEW_COUNT "<<manager->GetViewsId().size()<<std::endl;
-        if (editor) manager->DestroyCefView(editor->GetId(), false);
+        if (viewId >= 0) manager->DestroyCefView(viewId, false);
         // Return control to the owner; drain the asynchronous browser close
         // before shutting down CEF. DESTROY is a request, DESTROYWINDOW is
         // the actual browser-destruction notification from the SDK.
