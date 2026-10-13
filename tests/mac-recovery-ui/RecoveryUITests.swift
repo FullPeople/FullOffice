@@ -1,5 +1,7 @@
 import XCTest
 import CryptoKit
+import AppKit
+import Vision
 
 final class RecoveryUITests: XCTestCase {
     var checks = [String: Bool]()
@@ -10,8 +12,8 @@ final class RecoveryUITests: XCTestCase {
     }
     func expect(_ name: String, _ value: Bool) throws {
         checks[name] = value
-        let report: [String: Any] = ["Passed": checks.count == 12 && checks.values.allSatisfy { $0 }, "Checks": checks,
-            "Scope": "Actual Mac application menu, recovery chooser, system Save panel, file export and native recovered editor through XCTest; authored fixtures only, not physical-device or installer acceptance."]
+        let report: [String: Any] = ["Passed": checks.count == 13 && checks.values.allSatisfy { $0 }, "Checks": checks,
+            "Scope": "Actual Mac application menu, recovery chooser, system Save panel, file export, native recovered body verified from compositor screenshot and normal close through XCTest; authored fixtures only, not physical-device or installer acceptance."]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("report.json"))
         XCTAssertTrue(value, name)
         if !value { throw NSError(domain: "RecoveryUI", code: 1, userInfo: [NSLocalizedDescriptionKey: name]) }
@@ -66,7 +68,20 @@ final class RecoveryUITests: XCTestCase {
             return ""
         }
         try expect("RecoveredDocumentOpensInActualNativeEditor", wait(75) { eventLog().contains("DOCUMENT_CONTENT_READY") } && editor.windows.firstMatch.waitForExistence(timeout: 10))
-        try editor.screenshot().pngRepresentation.write(to: output.appendingPathComponent("recovered-native-editor.png"))
+        try expect("RecoveredBodyActuallyRendered", wait(25) {
+            do {
+                let png = editor.screenshot().pngRepresentation
+                try png.write(to: output.appendingPathComponent("recovered-native-editor.png"))
+                guard let image = NSImage(data: png), let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return false }
+                let request = VNRecognizeTextRequest()
+                request.recognitionLevel = .accurate; request.usesLanguageCorrection = false
+                try VNImageRequestHandler(cgImage: cg).perform([request])
+                let rows = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+                let text = rows.joined(separator: " ").uppercased().filter { $0.isLetter || $0.isNumber }
+                try JSONSerialization.data(withJSONObject: ["RecognizedRows": rows], options: [.prettyPrinted]).write(to: output.appendingPathComponent("recovered-body-ocr.json"))
+                return text.contains("RECOVEREDBODY20261014")
+            } catch { return false }
+        })
         editor.activate()
         editor.typeKey("q", modifierFlags: [.command])
         try expect("RecoveredNativeEditorClosesNormally", wait(20) { eventLog().contains("OFFICE_EVENT 8000") && eventLog().contains("HOST_CLOSED") } && editor.wait(for: .notRunning, timeout: 10))
