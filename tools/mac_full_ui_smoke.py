@@ -53,5 +53,18 @@ def run(app,root,out):
         report['ExitCode']=code;report['Format']=kind
         (case/'report.json').write_text(json.dumps(report,indent=2));reports.append(report)
         print(json.dumps({'Format':kind,'Passed':report['Passed'],'Checks':checks}),flush=True)
-        if not report['Passed']:raise RuntimeError('Actual self-contained product app failed '+kind)
+        if not report['Passed']:
+            # Diagnose only the newly built, owned worker and authored fixture.
+            # Do not let a reference/debug run turn this failed app check green.
+            host=app/'Contents/Helpers/FullOfficeOfficeHost.app'
+            resources=host/'Contents/Resources';debug=case/'worker-debug';debug.mkdir()
+            command=['lldb','--batch','-o','breakpoint set --name exit --name _exit','-o','run',
+                '-o','thread backtrace all','-o','quit','--',str(host/'Contents/MacOS/FullOfficeOfficeHost'),
+                str(resources),str(debug/'profile'),str(working),str(debug),str(resources/'editors/web-apps/apps/api/documents/index.html')]
+            with (case/'worker-exit-stack.log').open('wb') as log:
+                debugger=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,start_new_session=True,
+                    env=dict(os.environ,FULLOFFICE_MAC_SAVE_TO_ORIGINAL='1'))
+                try:debugger.wait(timeout=60)
+                except subprocess.TimeoutExpired:os.killpg(debugger.pid,signal.SIGKILL);debugger.wait(timeout=10)
+            raise RuntimeError('Actual self-contained product app failed '+kind)
     (out/'report.json').write_text(json.dumps({'Passed':all(r['Passed'] for r in reports),'Results':reports,'Scope':'Actual full product app after upstream mount detached; independent native edits, original saves and PDF navigation. Not installer/update acceptance.'},indent=2))

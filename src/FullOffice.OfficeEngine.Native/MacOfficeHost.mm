@@ -77,7 +77,7 @@ public:
                         dispatch_async(dispatch_get_main_queue(), ^{ [commitStatus setStringValue:@"正在保存到原文件…"]; });
                     }
                 } else if (closingAfterSave) dispatch_async(dispatch_get_main_queue(), ^{
-                    closingAfterSave = false; [NSApp replyToApplicationShouldTerminate:NO];
+                    closingAfterSave = false;
                 });
             }
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_DESTROY && manager)
@@ -131,7 +131,9 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
 - (void)saveDocumentAs:(id)sender { emit("SAVE_AS_REQUEST"); }
 - (BOOL)windowShouldClose:(NSWindow*)sender { [NSApp terminate:nil]; return NO; }
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender {
-    if (originalPending) { closingAfterSave = true; return NSTerminateLater; }
+    // The pinned NSAscApplication only honors NSTerminateCancel; NSTerminateLater
+    // would still destroy its views. Cancel this request and retry after our ACK.
+    if (originalPending) { closingAfterSave = true; return NSTerminateCancel; }
     if (!nativeDirty && (!saveToOriginal || !originalUncommitted)) return NSTerminateNow;
     NSAlert* alert = [[NSAlert alloc] init];
     [alert setMessageText:@"保存当前文档的修改？"];
@@ -140,7 +142,7 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
     const NSModalResponse choice = [alert runModal];
     if (choice == NSAlertSecondButtonReturn) return NSTerminateCancel;
     if (choice == NSAlertThirdButtonReturn) { emit("DISCARD_REQUESTED"); return NSTerminateNow; }
-    closingAfterSave = true; [self saveDocument:nil]; return NSTerminateLater;
+    closingAfterSave = true; [self saveDocument:nil]; return NSTerminateCancel;
 }
 - (void)application:(NSApplication*)sender openFiles:(NSArray<NSString*>*)files {
     [sender replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
@@ -258,7 +260,7 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
         emit(ok ? "ORIGINAL_SAVE_ACK OK" : "ORIGINAL_SAVE_ACK FAILED");
         if (closingAfterSave) {
             closingAfterSave = false;
-            [NSApp replyToApplicationShouldTerminate:ok && !nativeDirty && !originalUncommitted];
+            if (ok && !nativeDirty && !originalUncommitted) [NSApp terminate:nil];
         }
     }];
     __block int captureTicks = 0;
