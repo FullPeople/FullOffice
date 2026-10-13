@@ -1,6 +1,6 @@
 """Verify upstream Mac runtime and inspect its real native editor integration ABI."""
 from pathlib import Path
-import hashlib,json,platform,subprocess,urllib.request
+import hashlib,json,platform,subprocess,urllib.request,time
 import argparse
 
 parser=argparse.ArgumentParser();parser.add_argument('--native-window',action='store_true');args=parser.parse_args()
@@ -47,4 +47,11 @@ try:
     if args.native_window:
         from mac_office_native_smoke import exercise
         exercise(app,out,root)
-finally:subprocess.run(['hdiutil','detach',str(mount)],check=True,timeout=60,stdout=subprocess.DEVNULL)
+finally:
+    for attempt in range(10):
+        cleanup=subprocess.run(['hdiutil','detach',str(mount)],capture_output=True,text=True,timeout=15)
+        if cleanup.returncode==0:break
+        if cleanup.returncode!=16:break
+        time.sleep(1)
+    (out/'mount-cleanup.json').write_text(json.dumps({'Detached':cleanup.returncode==0,'ExitCode':cleanup.returncode,'Attempts':attempt+1,'Error':cleanup.stderr[:1000]},indent=2))
+    if cleanup.returncode:print(json.dumps({'OwnedMountCleanupDeferred':True,'ExitCode':cleanup.returncode}),flush=True)

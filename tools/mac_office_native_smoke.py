@@ -16,9 +16,12 @@ def exercise(app,out,root):
     (host/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleName':'FullOfficeOfficeHost','CFBundleExecutable':'FullOfficeOfficeHost',
         'CFBundleIdentifier':'center.dnd.FullOffice.OfficeHostResearch','CFBundlePackageType':'APPL','NSHighResolutionCapable':True}))
     source=root/'src/FullOffice.OfficeEngine.Native'
+    framework_roots=sorted({frameworks,*[p.parent for p in app.rglob('*.framework') if p.is_dir()]})
     build=['xcrun','clang++','-std=c++17','-fblocks','-D_MAC','-DDESKTOP_NO_USE_DYNAMIC_LIBRARY','-DQ_DECL_EXPORT=',
         '-I'+str(source/'third_party/desktop-sdk/ChromiumBasedEditors/lib/include'),'-F'+str(frameworks),
-        str(source/'MacOfficeHost.mm'),'-framework','ascdocumentscore','-framework','AppKit','-Wl,-rpath,'+str(frameworks),'-o',str(mac/'FullOfficeOfficeHost')]
+        str(source/'MacOfficeHost.mm'),'-framework','ascdocumentscore','-framework','AppKit',
+        *['-Wl,-rpath,'+str(path) for path in framework_roots],'-o',str(mac/'FullOfficeOfficeHost')]
+    (out/'native-library-search-paths.json').write_text(json.dumps([p.relative_to(app).as_posix() for p in framework_roots],indent=2))
     subprocess.run(build,check=True,timeout=90)
     fixture=work/'native-probe.docx'
     with ZipFile(fixture,'w',ZIP_DEFLATED) as z:
