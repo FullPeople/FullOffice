@@ -124,13 +124,17 @@ final class Delegate: NSObject, NSApplicationDelegate {
         edit.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         NSApp.mainMenu = menu
         if CommandLine.arguments.contains("--ui-probe") { runProbe(); return }
-        let reader = ReaderWindow(); readers.append(reader); reader.showWindow(nil)
-        if let file = CommandLine.arguments.dropFirst().first, !file.hasPrefix("-") {
-            do { try reader.load(URL(fileURLWithPath: file)) } catch { NSAlert(error: error).runModal() }
+        if readers.isEmpty {
+            let reader = ReaderWindow(); readers.append(reader); reader.showWindow(nil)
         }
         NSApp.activate(ignoringOtherApps: true)
     }
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
+        if CommandLine.arguments.contains("--ui-probe") {
+            probeStage("probe-launch-arguments-handled")
+            sender.reply(toOpenOrPrint: .success)
+            return
+        }
         for filename in filenames {
             let reader = ReaderWindow()
             do { try reader.load(URL(fileURLWithPath: filename)); readers.append(reader); reader.showWindow(nil) }
