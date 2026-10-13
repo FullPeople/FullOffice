@@ -93,6 +93,12 @@ def exercise(app,out,root,kind='docx',process_host=False):
             process.wait(timeout=15);code=process.returncode
             (out/'native-timeout.json').write_text(json.dumps({'OwnedPid':process.pid,'TimedOut':True}))
     crash_reports=[]
+    if process_host:
+        for session in (work/'profile').glob('*'):
+            if not session.is_dir():continue
+            for relative in ['worker.log','session.json','events/native-events.log','events/commit-state.json']:
+                evidence=session/relative
+                if evidence.is_file():shutil.copy2(evidence,out/('session-'+session.name+'-'+evidence.name))
     diagnostic_root=Path.home()/'Library/Logs/DiagnosticReports'
     diagnostics=[*diagnostic_root.glob('FullOfficeOfficeHost*.ips'),*diagnostic_root.glob('editors_helper*.ips')]
     for diagnostic in diagnostics:

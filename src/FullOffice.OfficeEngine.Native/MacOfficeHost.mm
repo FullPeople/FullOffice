@@ -4,6 +4,7 @@
 #include <iostream>
 #include <mutex>
 #include <atomic>
+#include <fstream>
 #include "mac_application.h"
 #include "mac_cefview.h"
 
@@ -23,7 +24,14 @@ static std::atomic<bool> closingAfterSave{false};
 static NSTextField* commitStatus = nil;
 static unsigned long commandSequence = 0;
 static std::wstring lastProbeState;
-static void emit(const std::string& text) { std::lock_guard<std::mutex> lock(outputMutex); std::cout << text << std::endl; }
+static void emit(const std::string& text) {
+    std::lock_guard<std::mutex> lock(outputMutex);
+    std::cout << text << std::endl;
+    if (editProbe && saveToOriginal) {
+        std::ofstream diagnostic(output / "native-events.log", std::ios::app);
+        diagnostic << text << std::endl;
+    }
+}
 static std::wstring officeWideString(NSString* value) {
     NSData* bytes = [value dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
     return std::wstring(static_cast<const wchar_t*>([bytes bytes]), [bytes length] / sizeof(wchar_t));

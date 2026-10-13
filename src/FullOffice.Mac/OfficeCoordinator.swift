@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 
 struct OfficeRuntime {
     let executable: URL
@@ -9,7 +10,7 @@ struct OfficeRuntime {
         let worker = bundle.appendingPathComponent("Contents/Helpers/FullOfficeOfficeHost.app")
         let resources = worker.appendingPathComponent("Contents/Resources")
         let executable = worker.appendingPathComponent("Contents/MacOS/FullOfficeOfficeHost")
-        let entry = resources.appendingPathComponent("editors/web/apps/api/documents/index.html")
+        let entry = resources.appendingPathComponent("editors/web-apps/apps/api/documents/index.html")
         guard FileManager.default.isExecutableFile(atPath: executable.path), FileManager.default.fileExists(atPath: entry.path) else {
             throw OfficeSessionError.message("缺少办公编辑组件，请使用包含文档和表格编辑器的完整安装包。")
         }
@@ -66,11 +67,20 @@ final class OfficeCoordinator {
                 self.log = try FileHandle(forWritingTo: logURL)
                 self.activity.lock(); self.process = worker; self.activity.unlock()
                 try worker.run()
+                try? output.fileHandleForWriting.close()
                 self.activity.lock(); self.opening = false; self.activity.unlock()
                 self.state("正在打开“\(source.lastPathComponent)”…")
                 DispatchQueue.global(qos: .utility).async {
                     do {
-                        while let block = try output.fileHandleForReading.read(upToCount: 65536), !block.isEmpty {
+                        var buffer = [UInt8](repeating: 0, count: 65536)
+                        while true {
+                            let count = buffer.withUnsafeMutableBytes { Darwin.read(output.fileHandleForReading.fileDescriptor, $0.baseAddress, $0.count) }
+                            if count == 0 { break }
+                            if count < 0 {
+                                if errno == EINTR { continue }
+                                throw NSError(domain: NSPOSIXErrorDomain, code: Int(errno))
+                            }
+                            let block = Data(buffer.prefix(count))
                             self.queue.sync { self.receive(block) }
                         }
                         worker.waitUntilExit()
