@@ -114,7 +114,7 @@ final class TextDocumentWindow: NSWindowController, NSTextViewDelegate, NSWindow
     @objc func saveDocumentAs(_ sender: Any?) {
         guard !busy, let session else { return }
         let panel = NSSavePanel(); panel.nameFieldStringValue = session.source.lastPathComponent
-        panel.directoryURL = session.source.deletingLastPathComponent()
+        panel.directoryURL = untitled ? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first : session.source.deletingLastPathComponent()
         panel.allowedContentTypes = OfficeFileSession.textFormats.compactMap { UTType(filenameExtension: $0) }
         panel.allowsOtherFileTypes = false
         guard panel.runModal() == .OK, let target = panel.url else { closingAfterSave = false; onSaved?(false); return }

@@ -29,7 +29,7 @@
 @implementation FullOfficeMarkdownPreviewController
 - (instancetype)init {
     if ((self = [super init])) {
-        _tasks = [NSHashTable strongObjectsHashTable];
+        _tasks = [NSHashTable hashTableWithOptions:NSPointerFunctionsStrongMemory | NSPointerFunctionsObjectPointerPersonality];
         WKWebViewConfiguration* configuration = [WKWebViewConfiguration new];
         configuration.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
         FullOfficeMarkdownSchemeHandler* handler = [FullOfficeMarkdownSchemeHandler new]; handler.owner = self;
