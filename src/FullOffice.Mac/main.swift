@@ -2,6 +2,10 @@ import AppKit
 import PDFKit
 import UniformTypeIdentifiers
 
+func probeStage(_ phase: String) {
+    if CommandLine.arguments.contains("--ui-probe") { fputs("MAC_PROBE \(phase)\n", stderr) }
+}
+
 final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutlineViewDelegate {
     let pdf = PDFView()
     let outline = NSOutlineView()
@@ -11,6 +15,7 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
     private(set) var url: URL?
 
     init() {
+        probeStage("window-construction")
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 780),
                               styleMask: [.titled, .closable, .miniaturizable, .resizable],
                               backing: .buffered, defer: false)
@@ -18,6 +23,7 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
         window.title = "FullOffice · macOS 阅读预览"
         window.center()
         window.isReleasedWhenClosed = false
+        probeStage("window-created")
         let host = NSView(); window.contentView = host
         let open = NSButton(title: "打开 PDF", target: self, action: #selector(openFile))
         let fit = NSButton(title: "适应整页", target: self, action: #selector(fitPage))
@@ -55,6 +61,7 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
         split.setPosition(240, ofDividerAt: 0)
         NotificationCenter.default.addObserver(self, selector: #selector(pageChanged),
                                                name: .PDFViewPageChanged, object: pdf)
+        probeStage("reader-created")
     }
     required init?(coder: NSCoder) { fatalError("Programmatic window") }
     deinit { NotificationCenter.default.removeObserver(self) }
@@ -107,6 +114,7 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
 final class Delegate: NSObject, NSApplicationDelegate {
     var readers: [ReaderWindow] = []
     func applicationDidFinishLaunching(_ notification: Notification) {
+        probeStage("did-finish-launching")
         let menu = NSMenu(), appMenu = NSMenu(), item = NSMenuItem()
         item.submenu = appMenu; menu.addItem(item)
         appMenu.addItem(withTitle: "退出 FullOffice", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -133,6 +141,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     func runProbe() {
+        probeStage("probe-enter")
         let args = CommandLine.arguments
         guard let index = args.firstIndex(of: "--ui-probe"), args.count > index + 2 else { exit(2) }
         let source = URL(fileURLWithPath: args[index + 1]), output = URL(fileURLWithPath: args[index + 2], isDirectory: true)
@@ -140,17 +149,21 @@ final class Delegate: NSObject, NSApplicationDelegate {
         let reader = ReaderWindow(); readers.append(reader)
         do {
             try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
+            probeStage("load-fixture")
             try reader.load(source); reader.showWindow(nil)
+            reader.window?.contentView?.layoutSubtreeIfNeeded()
+            probeStage("fixture-visible")
             checks["ActualPdfKitDocumentLoaded"] = reader.pdfDocument?.pageCount == 3
             checks["FullOutlineImported"] = reader.pdfDocument?.outlineRoot?.numberOfChildren == 2
             checks["TextSelectionAvailable"] = reader.pdfDocument?.page(at: 0)?.string?.contains("FullOffice fixture") == true
             reader.fitPage(); checks["FitPageHasValidScale"] = reader.pdf.scaleFactor.isFinite && reader.pdf.scaleFactor > 0
             reader.fitWidth(); checks["FitWidthHasValidScale"] = reader.pdf.scaleFactor.isFinite && reader.pdf.scaleFactor > 0
             if let last = reader.pdfDocument?.page(at: 2) { reader.pdf.go(to: last) }
-            checks["PageNavigationWorks"] = reader.pdfDocument?.index(for: reader.pdf.currentPage!) == 2
+            checks["PageNavigationWorks"] = reader.pdf.currentPage.map { reader.pdfDocument?.index(for: $0) == 2 } ?? false
             checks["OwnedNativeWindowVisible"] = reader.window?.isVisible == true
         } catch { failure = String(describing: error) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            probeStage("capture-and-report")
             do {
                 if let view = reader.window?.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) {
                     view.cacheDisplay(in: view.bounds, to: bitmap)
@@ -178,4 +191,6 @@ extension ProcessInfo {
 }
 let app = NSApplication.shared
 let delegate = Delegate()
-app.setActivationPolicy(.regular); app.delegate = delegate; app.run()
+probeStage("application-created")
+app.setActivationPolicy(.regular); app.delegate = delegate
+withExtendedLifetime(delegate) { app.run() }
