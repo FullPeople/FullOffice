@@ -13,7 +13,10 @@ constexpr std::array formats{
     Format{L".pdf", L"Pdf", L"PDF 文档"}, Format{L".md", L"Markdown", L"Markdown 文档"},
     Format{L".markdown", L"Markdown", L"Markdown 文档"}, Format{L".txt", L"Text", L"文本文档"},
     Format{L".docx", L"Word", L"Word 文档", true}, Format{L".xlsx", L"Spreadsheet", L"Excel 工作簿", true},
-    Format{L".pptx", L"Presentation", L"演示文稿", true}};
+    Format{L".pptx", L"Presentation", L"演示文稿", true},
+    Format{L".odt", L"Word", L"OpenDocument 文档", true},
+    Format{L".ods", L"Spreadsheet", L"OpenDocument 工作簿", true},
+    Format{L".odp", L"Presentation", L"OpenDocument 演示文稿", true}};
 bool valid(const std::wstring& name) {
     return !name.empty() && name.size() < 100 && name.starts_with(L"FullOffice") &&
         std::all_of(name.begin(), name.end(), [](wchar_t c) { return std::iswalnum(c) || c == L'-' || c == L'.'; });

@@ -21,7 +21,8 @@ def registry_string(path, name=None):
         return None
 user_choice_path = r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts\.pdf\UserChoice"
 before_choice = (registry_string(user_choice_path, "ProgId"), registry_string(user_choice_path, "Hash"))
-office_suffixes = {".docx": ".Word", ".xlsx": ".Spreadsheet", ".pptx": ".Presentation"}
+office_suffixes = {".docx": ".Word", ".xlsx": ".Spreadsheet", ".pptx": ".Presentation",
+                   ".odt": ".Word", ".ods": ".Spreadsheet", ".odp": ".Presentation"}
 def office_user_choices():
     return {suffix: tuple(registry_string("Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\FileExts\\" + suffix + r"\UserChoice", field)
                          for field in ("ProgId", "Hash")) for suffix in office_suffixes}
