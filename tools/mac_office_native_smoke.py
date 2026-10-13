@@ -89,7 +89,7 @@ def exercise(app,out,root):
             reference=subprocess.Popen([str(app/'Contents/MacOS/ONLYOFFICE'),str(fixture)],stdout=log,stderr=subprocess.STDOUT)
             time.sleep(40)
             if reference.poll() is None:
-                capture=subprocess.run(['xcrun','swift',str(root/'tools/mac_office_reference.swift'),str(reference.pid),str(app),str(out/'upstream-reference-window.png')],capture_output=True,text=True,timeout=60)
+                capture=subprocess.run(['xcrun','swift',str(root/'tools/mac_office_reference.swift'),str(reference.pid),str(app),str(fixture),str(out/'upstream-reference-window.png')],capture_output=True,text=True,timeout=75)
                 (out/'upstream-reference-control.json').write_text(json.dumps({'ExitCode':capture.returncode,'Stdout':capture.stdout,'Stderr':capture.stderr},indent=2))
                 try:reference.wait(timeout=15)
                 except subprocess.TimeoutExpired:reference.kill();reference.wait(timeout=15)
