@@ -7,7 +7,7 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
     let outline = NSOutlineView()
     let sidebar = NSScrollView()
     let status = NSTextField(labelWithString: "请选择 PDF")
-    private(set) var document: PDFDocument?
+    private(set) var pdfDocument: PDFDocument?
     private(set) var url: URL?
 
     init() {
@@ -63,7 +63,7 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
         guard let next = PDFDocument(url: source), next.pageCount > 0, !next.isLocked else {
             throw NSError(domain: "FullOffice", code: 1, userInfo: [NSLocalizedDescriptionKey: "无法打开 PDF，文件可能损坏或需要密码。"])
         }
-        document = next; url = source; pdf.document = next
+        pdfDocument = next; url = source; pdf.document = next
         window?.title = source.lastPathComponent + " — FullOffice 阅读预览"
         window?.representedURL = source
         outline.reloadData(); outline.expandItem(nil, expandChildren: false)
@@ -86,14 +86,14 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
     }
     @objc func collapseBookmarks() { outline.collapseItem(nil, collapseChildren: true) }
     @objc func pageChanged() {
-        if let doc = document, let page = pdf.currentPage { status.stringValue = "\(doc.index(for: page) + 1) / \(doc.pageCount)" }
+        if let doc = pdfDocument, let page = pdf.currentPage { status.stringValue = "\(doc.index(for: page) + 1) / \(doc.pageCount)" }
         else { status.stringValue = "请选择 PDF" }
     }
     func outlineView(_ view: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int {
-        ((item as? PDFOutline) ?? document?.outlineRoot)?.numberOfChildren ?? 0
+        ((item as? PDFOutline) ?? pdfDocument?.outlineRoot)?.numberOfChildren ?? 0
     }
     func outlineView(_ view: NSOutlineView, child index: Int, ofItem item: Any?) -> Any {
-        ((item as? PDFOutline) ?? document?.outlineRoot)!.child(at: index)!
+        ((item as? PDFOutline) ?? pdfDocument?.outlineRoot)!.child(at: index)!
     }
     func outlineView(_ view: NSOutlineView, isItemExpandable item: Any) -> Bool { (item as? PDFOutline)?.numberOfChildren ?? 0 > 0 }
     func outlineView(_ view: NSOutlineView, objectValueFor column: NSTableColumn?, byItem item: Any?) -> Any? { (item as? PDFOutline)?.label }
@@ -141,13 +141,13 @@ final class Delegate: NSObject, NSApplicationDelegate {
         do {
             try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
             try reader.load(source); reader.showWindow(nil)
-            checks["ActualPdfKitDocumentLoaded"] = reader.document?.pageCount == 3
-            checks["FullOutlineImported"] = reader.document?.outlineRoot?.numberOfChildren == 2
-            checks["TextSelectionAvailable"] = reader.document?.page(at: 0)?.string?.contains("FullOffice fixture") == true
+            checks["ActualPdfKitDocumentLoaded"] = reader.pdfDocument?.pageCount == 3
+            checks["FullOutlineImported"] = reader.pdfDocument?.outlineRoot?.numberOfChildren == 2
+            checks["TextSelectionAvailable"] = reader.pdfDocument?.page(at: 0)?.string?.contains("FullOffice fixture") == true
             reader.fitPage(); checks["FitPageHasValidScale"] = reader.pdf.scaleFactor.isFinite && reader.pdf.scaleFactor > 0
             reader.fitWidth(); checks["FitWidthHasValidScale"] = reader.pdf.scaleFactor.isFinite && reader.pdf.scaleFactor > 0
-            if let last = reader.document?.page(at: 2) { reader.pdf.go(to: last) }
-            checks["PageNavigationWorks"] = reader.document?.index(for: reader.pdf.currentPage!) == 2
+            if let last = reader.pdfDocument?.page(at: 2) { reader.pdf.go(to: last) }
+            checks["PageNavigationWorks"] = reader.pdfDocument?.index(for: reader.pdf.currentPage!) == 2
             checks["OwnedNativeWindowVisible"] = reader.window?.isVisible == true
         } catch { failure = String(describing: error) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
