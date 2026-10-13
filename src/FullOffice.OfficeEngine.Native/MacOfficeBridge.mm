@@ -105,6 +105,8 @@ extern "C" void fo_office_run() {
 extern "C" void fo_office_close() {
     if (manager) {
         std::cout<<"BRIDGE_CLOSE_VIEW_COUNT "<<manager->GetViewsId().size()<<std::endl;
+        std::cout<<"BRIDGE_CLOSE_VIEW_ID "<<viewId<<std::endl;
+        for (int registeredId : manager->GetViewsId()) std::cout<<"BRIDGE_REGISTERED_VIEW_ID "<<registeredId<<std::endl;
         if (viewId >= 0) manager->DestroyCefView(viewId, false);
         // Wait for DESTROYWINDOW, the actual browser-destruction notification.
         // DESTROY is only a request; it cannot establish shutdown readiness.

@@ -73,7 +73,7 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
     }
     func loadOffice() {
         do {
-            handle = dlopen(args[2], RTLD_NOW | RTLD_LOCAL)
+            handle = dlopen(args[2], RTLD_NOW | RTLD_GLOBAL)
             guard handle != nil else { throw NSError(domain: "FullOffice", code: 2, userInfo: [NSLocalizedDescriptionKey: String(cString: dlerror())]) }
             let initialize = try symbol("fo_office_initialize", InitOffice.self)
             let attach = try symbol("fo_office_attach", AttachOffice.self)
