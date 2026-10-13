@@ -1,6 +1,9 @@
 """Verify upstream Mac runtime and inspect its real native editor integration ABI."""
 from pathlib import Path
 import hashlib,json,platform,subprocess,urllib.request
+import argparse
+
+parser=argparse.ArgumentParser();parser.add_argument('--native-window',action='store_true');args=parser.parse_args()
 
 root=Path(__file__).resolve().parents[1]
 architecture=platform.machine()
@@ -41,4 +44,7 @@ try:
         report.setdefault('CoreSymbolCounts',[]).append(len(wanted))
     (out/'report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(json.dumps({k:report[k] for k in ['RuntimeVerified','Architecture','BundleSignatureVerified','CoreLibraries','CoreSymbolCounts'] if k in report}),flush=True)
+    if args.native_window:
+        from mac_office_native_smoke import exercise
+        exercise(app,out,root)
 finally:subprocess.run(['hdiutil','detach',str(mount)],check=True,timeout=60,stdout=subprocess.DEVNULL)
