@@ -1,6 +1,6 @@
 """Compile and run the actual upstream native editor, using only an authored DOCX."""
 from pathlib import Path
-import hashlib,json,plistlib,subprocess
+import hashlib,json,plistlib,subprocess,time
 from zipfile import ZipFile,ZIP_DEFLATED
 
 def exercise(app,out,root):
@@ -29,13 +29,29 @@ def exercise(app,out,root):
         z.writestr('_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
         z.writestr('word/document.xml','<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:sz w:val="56"/></w:rPr><w:t>MAC_ENGINE_BODY_PROBE_20261013</w:t></w:r></w:p><w:sectPr/></w:body></w:document>')
     original=hashlib.sha256(fixture.read_bytes()).hexdigest()
+    started=time.time()
     with (out/'native-host.log').open('wb') as log:
-        result=subprocess.run([str(mac/'FullOfficeOfficeHost'),str(resources),str(work/'profile'),str(fixture),str(out),str(entries[0])],stdout=log,stderr=subprocess.STDOUT,timeout=100)
-    checks={'ActualNativeHostClosesNormally':result.returncode==0,'OriginalAuthorDocumentUnchanged':hashlib.sha256(fixture.read_bytes()).hexdigest()==original,
+        process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(resources),str(work/'profile'),str(fixture),str(out),str(entries[0])],stdout=log,stderr=subprocess.STDOUT)
+        try:code=process.wait(timeout=100)
+        except subprocess.TimeoutExpired:
+            process.kill();process.wait(timeout=15);code=process.returncode
+            (out/'native-timeout.json').write_text(json.dumps({'OwnedPid':process.pid,'TimedOut':True}))
+    for diagnostic in (Path.home()/'Library/Logs/DiagnosticReports').glob('FullOfficeOfficeHost*.ips'):
+        if diagnostic.stat().st_mtime<started:continue
+        try:
+            decoder=json.JSONDecoder();raw=diagnostic.read_text();_,end=decoder.raw_decode(raw)
+            body=json.loads(raw[end:].strip())
+            if body.get('pid')!=process.pid:continue
+            crash={'OwnedPid':process.pid,'Exception':body.get('exception'),'Termination':body.get('termination'),
+                'FaultingThread':body.get('faultingThread'),'Images':[{'name':p.get('name'),'path':p.get('path'),'arch':p.get('arch')} for p in body.get('usedImages',[])]}
+            if isinstance(body.get('faultingThread'),int):crash['Frames']=body['threads'][body['faultingThread']].get('frames')
+            (out/'owned-native-crash.json').write_text(json.dumps(crash,indent=2))
+        except (ValueError,KeyError,IndexError):continue
+    checks={'ActualNativeHostClosesNormally':code==0,'OriginalAuthorDocumentUnchanged':hashlib.sha256(fixture.read_bytes()).hexdigest()==original,
             'ActualCompositorScreenshot':(out/'native-office-window.png').is_file()}
     if checks['ActualCompositorScreenshot']:
         recognition=subprocess.run(['xcrun','swift',str(root/'tools/mac_office_ocr.swift'),str(out/'native-office-window.png'),str(out/'recognized-document.json')],timeout=90)
         checks['ActualOfficeBodyRendered']=recognition.returncode==0
-    report={'Passed':len(checks)==4 and all(checks.values()),'Checks':checks,'Scope':'Actual native ONLYOFFICE Mac interface and converter, generated DOCX body capture; no Office editing/save or final FullOffice integration claim.'}
+    report={'Passed':len(checks)==4 and all(checks.values()),'Checks':checks,'HostExitCode':code,'OwnedPid':process.pid,'Scope':'Actual native ONLYOFFICE Mac interface and converter, generated DOCX body capture; no Office editing/save or final FullOffice integration claim.'}
     (out/'native-host-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
     if not report['Passed']:raise RuntimeError('Actual native Office Mac window validation failed')

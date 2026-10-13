@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <iostream>
 #include <mutex>
+#include <atomic>
 #include "mac_application.h"
 #include "mac_cefview.h"
 
@@ -12,6 +13,7 @@ static CCefViewWrapper* wrapper = nullptr;
 static NSWindow* window = nil;
 static std::filesystem::path profile, document, resource, output;
 static std::mutex outputMutex;
+static std::atomic<bool> keyboardPending{false};
 static void emit(const std::string& text) { std::lock_guard<std::mutex> lock(outputMutex); std::cout << text << std::endl; }
 static std::wstring officeWideString(NSString* value) {
     NSData* bytes = [value dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
@@ -22,7 +24,12 @@ class Listener final : public NSEditorApi::CAscCefMenuEventListener {
 public:
     void OnEvent(NSEditorApi::CAscCefMenuEvent* event) override {
         if (event) {
-            if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_CHECK_KEYBOARD && manager) manager->CheckKeyboard();
+            if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_CHECK_KEYBOARD && manager) {
+                if (!keyboardPending.exchange(true)) dispatch_async(dispatch_get_main_queue(), ^{
+                    if (manager) manager->CheckKeyboard();
+                    keyboardPending = false;
+                });
+            }
             else emit("OFFICE_EVENT " + std::to_string(event->m_nType));
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_DESTROY && manager)
                 manager->GetApplication()->ExitMessageLoop();
