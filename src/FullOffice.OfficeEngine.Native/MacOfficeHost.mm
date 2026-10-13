@@ -14,6 +14,7 @@ static NSWindow* window = nil;
 static std::filesystem::path profile, document, resource, output;
 static std::mutex outputMutex;
 static std::atomic<bool> keyboardPending{false};
+static bool editProbe = false;
 static void emit(const std::string& text) { std::lock_guard<std::mutex> lock(outputMutex); std::cout << text << std::endl; }
 static std::wstring officeWideString(NSString* value) {
     NSData* bytes = [value dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
@@ -31,6 +32,14 @@ public:
                 });
             }
             else emit("OFFICE_EVENT " + std::to_string(event->m_nType));
+            if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_MODIFY_CHANGED && event->m_pData) {
+                auto* data = static_cast<NSEditorApi::CAscDocumentModifyChanged*>(event->m_pData);
+                emit(data->get_Changed() ? "DIRTY 1" : "DIRTY 0");
+            }
+            if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_ONSAVE && event->m_pData) {
+                auto* data = static_cast<NSEditorApi::CAscDocumentOnSaveData*>(event->m_pData);
+                emit(data->get_IsCancel() ? "SAVED CANCEL" : "SAVED OK");
+            }
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_DESTROY && manager)
                 manager->GetApplication()->ExitMessageLoop();
         }
@@ -38,6 +47,28 @@ public:
     }
 };
 static Listener listener;
+static void nativeKey(NSString* text, unsigned short code, NSEventModifierFlags modifiers = 0) {
+    for (auto type : {NSEventTypeKeyDown, NSEventTypeKeyUp}) {
+        NSEvent* event = [NSEvent keyEventWithType:type location:NSZeroPoint modifierFlags:modifiers
+            timestamp:[[NSProcessInfo processInfo] systemUptime] windowNumber:[window windowNumber] context:nil
+            characters:text charactersIgnoringModifiers:text isARepeat:NO keyCode:code];
+        [NSApp sendEvent:event];
+    }
+}
+static void inputProbeCharacter(NSString* text, NSUInteger index) {
+    if (index == [text length]) {
+        emit("NATIVE_INPUT_COMPLETE");
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            editor->Apply(editor->CreateCefEvent(ASC_MENU_EVENT_TYPE_CEF_SAVE));
+            emit("NATIVE_SAVE_REQUESTED");
+        });
+        return;
+    }
+    nativeKey([text substringWithRange:NSMakeRange(index, 1)], 0);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 60 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+        inputProbeCharacter(text, index + 1);
+    });
+}
 @interface OfficeParent : NSView
 @end
 @implementation OfficeParent
@@ -65,6 +96,18 @@ static Listener listener;
     [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
     wrapper = new CCefViewWrapper(parent);
     wrapper->resizeEvent();
+    if (editProbe) [NSTimer scheduledTimerWithTimeInterval:18 repeats:NO block:^(NSTimer*) {
+        [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES]; editor->focus(true);
+        emit(std::string("INPUT_RESPONDER ") + [NSStringFromClass([[window firstResponder] class]) UTF8String]);
+        NSPoint location = NSMakePoint(400, 330);
+        for (auto type : {NSEventTypeLeftMouseDown, NSEventTypeLeftMouseUp})
+            [NSApp sendEvent:[NSEvent mouseEventWithType:type location:location modifierFlags:0
+                timestamp:[[NSProcessInfo processInfo] systemUptime] windowNumber:[window windowNumber] context:nil
+                eventNumber:0 clickCount:1 pressure:1]];
+        nativeKey(@"\uF701", 125, NSEventModifierFlagCommand);
+        nativeKey(@"\r", 36);
+        inputProbeCharacter(@"MAC_NATIVE_EDIT_SAVED_20261013", 0);
+    }];
     emit("EDITOR_BOUNDS " + std::to_string(wrapper->cef_width) + " " + std::to_string(wrapper->cef_height));
     editor = manager->CreateCefEditor(wrapper);
     if (!editor) { emit("EDITOR_CREATION_FAILED"); std::exit(4); }
@@ -90,6 +133,7 @@ static Listener listener;
 @end
 int main(int argc, const char* argv[]) {
     if (argc != 6) return 2;
+    editProbe = std::getenv("FULLOFFICE_MAC_NATIVE_EDIT_PROBE") != nullptr;
     resource = argv[1]; profile = argv[2]; document = argv[3]; output = argv[4];
     const std::filesystem::path editorEntry = argv[5];
     if (!resource.is_absolute() || !profile.is_absolute() || !document.is_absolute() || !output.is_absolute()

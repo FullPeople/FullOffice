@@ -1,6 +1,6 @@
 """Compile and run the actual upstream native editor, using only an authored DOCX."""
 from pathlib import Path
-import hashlib,json,plistlib,subprocess,time
+import hashlib,json,plistlib,subprocess,time,os,shutil
 from zipfile import ZipFile,ZIP_DEFLATED
 
 def exercise(app,out,root):
@@ -48,9 +48,11 @@ def exercise(app,out,root):
         z.writestr('_rels/.rels','<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>')
         z.writestr('word/document.xml','<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:rPr><w:sz w:val="56"/></w:rPr><w:t>MAC_ENGINE_BODY_PROBE_20261013</w:t></w:r></w:p><w:sectPr/></w:body></w:document>')
     original=hashlib.sha256(fixture.read_bytes()).hexdigest()
+    working=work/'working-probe.docx';shutil.copy2(fixture,working)
     started=time.time()
     with (out/'native-host.log').open('wb') as log:
-        process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(resources),str(work/'profile'),str(fixture),str(out),str(entries[0])],stdout=log,stderr=subprocess.STDOUT)
+        process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(resources),str(work/'profile'),str(working),str(out),str(entries[0])],
+            env=dict(os.environ,FULLOFFICE_MAC_NATIVE_EDIT_PROBE='1'),stdout=log,stderr=subprocess.STDOUT)
         time.sleep(10)
         listing=subprocess.check_output(['ps','-axo','pid=,ppid=,command='],text=True)
         rows=[]
@@ -87,7 +89,14 @@ def exercise(app,out,root):
     if checks['ActualCompositorScreenshot']:
         recognition=subprocess.run(['xcrun','swift',str(root/'tools/mac_office_ocr.swift'),str(out/'native-office-window.png'),str(out/'recognized-document.json')],timeout=90)
         checks['ActualOfficeBodyRendered']=recognition.returncode==0
-    report={'Passed':len(checks)==4 and all(checks.values()),'Checks':checks,'HostExitCode':code,'OwnedPid':process.pid,'Scope':'Actual native ONLYOFFICE Mac interface and converter, generated DOCX body capture; no Office editing/save or final FullOffice integration claim.'}
+    with ZipFile(working) as saved:
+        checks['NativeInputActuallySavedToWorkingDocument']=b'MAC_NATIVE_EDIT_SAVED_20261013' in saved.read('word/document.xml')
+        checks['SavedDocumentPackageValid']=saved.testzip() is None
+    host_log=(out/'native-host.log').read_text(errors='replace')
+    checks['ActualNativeDirtyAndSaveEvents']='DIRTY 1' in host_log and 'SAVED OK' in host_log
+    shutil.copy2(working,out/'saved-working-probe.docx')
+    report={'Passed':len(checks)==7 and all(checks.values()),'Checks':checks,'HostExitCode':code,'OwnedPid':process.pid,
+        'Scope':'Actual native ONLYOFFICE Mac editor, authored DOCX and dispatched AppKit input events, native save request and independent package verification; not physical keyboard or final FullOffice integration acceptance.'}
     (out/'native-host-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
     if not report['Passed']:
         # Independent upstream application control: same signed read-only bundle,
