@@ -51,6 +51,11 @@ try:
                 '-o','disassemble -n "CAscApplicationManager::DestroyCefView(int, bool)" -c 120'],
                 capture_output=True,text=True,timeout=40)
             (out/f'core-{index}-close-disassembly.txt').write_text(disassembly.stdout+disassembly.stderr,encoding='utf-8')
+            for label,method,count in [('view-apply','CCefView::Apply(NSEditorApi::CAscMenuEvent*)',400),
+                                       ('browser-close','CCefView_Private::CloseBrowser(bool)',120)]:
+                inspected=subprocess.run(['lldb','--batch','-o','target create '+shlex.quote(str(core)),
+                    '-o',f'disassemble -n "{method}" -c {count}'],capture_output=True,text=True,timeout=40)
+                (out/f'core-{index}-{label}-disassembly.txt').write_text(inspected.stdout+inspected.stderr,encoding='utf-8')
     (out/'report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
     print(json.dumps({k:report[k] for k in ['RuntimeVerified','Architecture','BundleSignatureVerified','CoreLibraries','CoreSymbolCounts'] if k in report}),flush=True)
     if args.native_window:
