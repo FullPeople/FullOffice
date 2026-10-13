@@ -13,6 +13,7 @@ def exercise(app,out,root):
     work=root/'.cache/mac-office-native';work.mkdir(parents=True,exist_ok=False)
     host=work/'FullOfficeOfficeHost.app';mac=host/'Contents/MacOS';mac.mkdir(parents=True)
     (host/'Contents/Frameworks').symlink_to(frameworks,target_is_directory=True)
+    (host/'Contents/Resources').symlink_to(resources,target_is_directory=True)
     (host/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleName':'FullOfficeOfficeHost','CFBundleExecutable':'FullOfficeOfficeHost',
         'CFBundleIdentifier':'center.dnd.FullOffice.OfficeHostResearch','CFBundlePackageType':'APPL','NSHighResolutionCapable':True}))
     source=root/'src/FullOffice.OfficeEngine.Native'
@@ -51,17 +52,21 @@ def exercise(app,out,root):
         except subprocess.TimeoutExpired:
             process.kill();process.wait(timeout=15);code=process.returncode
             (out/'native-timeout.json').write_text(json.dumps({'OwnedPid':process.pid,'TimedOut':True}))
-    for diagnostic in (Path.home()/'Library/Logs/DiagnosticReports').glob('FullOfficeOfficeHost*.ips'):
+    crash_reports=[]
+    diagnostic_root=Path.home()/'Library/Logs/DiagnosticReports'
+    diagnostics=[*diagnostic_root.glob('FullOfficeOfficeHost*.ips'),*diagnostic_root.glob('editors_helper*.ips')]
+    for diagnostic in diagnostics:
         if diagnostic.stat().st_mtime<started:continue
         try:
             decoder=json.JSONDecoder();raw=diagnostic.read_text();_,end=decoder.raw_decode(raw)
             body=json.loads(raw[end:].strip())
-            if body.get('pid')!=process.pid:continue
-            crash={'OwnedPid':process.pid,'Exception':body.get('exception'),'Termination':body.get('termination'),
+            if body.get('pid') not in owned:continue
+            crash={'OwnedPid':body.get('pid'),'ProcessName':body.get('procName'),'Exception':body.get('exception'),'Termination':body.get('termination'),
                 'FaultingThread':body.get('faultingThread'),'Images':[{'name':p.get('name'),'path':p.get('path'),'arch':p.get('arch')} for p in body.get('usedImages',[])]}
             if isinstance(body.get('faultingThread'),int):crash['Frames']=body['threads'][body['faultingThread']].get('frames')
-            (out/'owned-native-crash.json').write_text(json.dumps(crash,indent=2))
+            crash_reports.append(crash)
         except (ValueError,KeyError,IndexError):continue
+    (out/'owned-native-crashes.json').write_text(json.dumps(crash_reports,indent=2))
     checks={'ActualNativeHostClosesNormally':code==0,'OriginalAuthorDocumentUnchanged':hashlib.sha256(fixture.read_bytes()).hexdigest()==original,
             'ActualCompositorScreenshot':(out/'native-office-window.png').is_file()}
     if checks['ActualCompositorScreenshot']:
