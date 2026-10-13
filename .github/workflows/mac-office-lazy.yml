@@ -1,0 +1,27 @@
+name: Deferred native Office app integration
+on:
+  push:
+    branches: [codex/macos-lazy-office-20261013]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Check native bridge syntax before runtime download
+        run: xcrun clang++ -fsyntax-only -std=c++17 -fblocks -D_MAC -DDESKTOP_NO_USE_DYNAMIC_LIBRARY -DQ_DECL_EXPORT= -Isrc/FullOffice.OfficeEngine.Native/third_party/desktop-sdk/ChromiumBasedEditors/lib/include src/FullOffice.OfficeEngine.Native/MacOfficeBridge.mm
+      - name: Run PDF first and initialize Office only when needed
+        run: python3 tools/inspect_mac_office_engine.py --native-window --lazy-host
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: mac-lazy-office-${{ matrix.runner }}-${{ github.run_id }}
+          path: artifacts/mac-office-abi/
+          if-no-files-found: warn

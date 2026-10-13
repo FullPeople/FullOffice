@@ -4,7 +4,7 @@ import hashlib,json,plistlib,subprocess,time,os,shutil
 from zipfile import ZipFile,ZIP_DEFLATED
 import xml.etree.ElementTree as ET
 
-def exercise(app,out,root,kind='docx'):
+def exercise(app,out,root,kind='docx',lazy=False):
     resources=app/'Contents/Resources';frameworks=app/'Contents/Frameworks'
     entries=[p for p in resources.rglob('index.html') if p.as_posix().endswith('/apps/api/documents/index.html')]
     if len(entries)!=1:
@@ -27,7 +27,15 @@ def exercise(app,out,root,kind='docx'):
         str(source/'MacOfficeHost.mm'),'-framework','ascdocumentscore','-framework','AppKit',
         *['-Wl,-rpath,'+str(path) for path in framework_roots],'-o',str(mac/'FullOfficeOfficeHost')]
     (out/'native-library-search-paths.json').write_text(json.dumps([p.relative_to(app).as_posix() for p in framework_roots],indent=2))
-    subprocess.run(build,check=True,timeout=90)
+    if lazy:
+        bridge_build=build.copy()
+        bridge_build[bridge_build.index(str(source/'MacOfficeHost.mm'))]=str(source/'MacOfficeBridge.mm')
+        bridge=host_frameworks/'FullOfficeOfficeBridge.dylib'
+        bridge_build[-1]=str(bridge);bridge_build.insert(2,'-dynamiclib')
+        subprocess.run(bridge_build,check=True,timeout=90)
+        subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'src/FullOffice.Mac/LazyOfficeProbe.swift'),
+            '-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOfficeOfficeHost')],check=True,timeout=90)
+    else:subprocess.run(build,check=True,timeout=90)
     helper_binary=work/'rebuilt-editors-helper'
     helper_build=build.copy();helper_build[helper_build.index(str(source/'MacOfficeHost.mm'))]=str(source/'MacOfficeHelper.cpp')
     helper_build[-1]=str(helper_binary)
@@ -57,6 +65,24 @@ def exercise(app,out,root,kind='docx'):
             z.writestr('xl/worksheets/sheet1.xml','<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews><cols><col min="2" max="2" width="60" customWidth="1"/></cols><sheetData><row r="1"><c r="A1"><v>1</v></c><c r="B1" t="inlineStr"><is><t>MAC_ENGINE_BODY_PROBE_20261013</t></is></c></row><row r="2"><c r="A2"><v>2</v></c></row><row r="3"><c r="A3"><f>SUM(A1:A2)</f><v>3</v></c></row></sheetData></worksheet>')
     original=hashlib.sha256(fixture.read_bytes()).hexdigest()
     working=work/('working-probe.'+kind);shutil.copy2(fixture,working)
+    if lazy:
+        pdf=work/'lazy-probe.pdf'
+        subprocess.run(['xcrun','swift',str(root/'tools/create_mac_probe_fixture.swift'),str(pdf)],check=True,timeout=60)
+        pdf_hash=hashlib.sha256(pdf.read_bytes()).hexdigest()
+        with (out/'lazy-host.log').open('wb') as log:
+            process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(pdf),str(bridge),str(resources),str(work/'lazy-profile'),str(working),str(out)],stdout=log,stderr=subprocess.STDOUT)
+            try:code=process.wait(timeout=120)
+            except subprocess.TimeoutExpired:process.kill();process.wait(timeout=15);code=process.returncode
+        report=json.loads((out/'lazy-host-report.json').read_text()) if (out/'lazy-host-report.json').is_file() else {'Passed':False,'Checks':{}}
+        checks=report['Checks'];checks['ActualLazyAppClosesNormally']=code==0
+        checks['AuthorPDFUnchanged']=hashlib.sha256(pdf.read_bytes()).hexdigest()==pdf_hash
+        checks['AuthorOfficeDocumentUnchanged']=hashlib.sha256(fixture.read_bytes()).hexdigest()==original
+        if (out/'lazy-office-window.png').is_file():
+            checks['ActualLazyOfficeBodyRendered']=subprocess.run(['xcrun','swift',str(root/'tools/mac_office_ocr.swift'),str(out/'lazy-office-window.png'),str(out/'lazy-office-recognized.json')],timeout=90).returncode==0
+        report['Passed']=report['Passed'] and len(checks)==10 and all(checks.values());report['HostExitCode']=code
+        (out/'lazy-host-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
+        if not report['Passed']:raise RuntimeError('Actual deferred Office integration failed')
+        return
     started=time.time()
     with (out/'native-host.log').open('wb') as log:
         process=subprocess.Popen([str(mac/'FullOfficeOfficeHost'),str(resources),str(work/'profile'),str(working),str(out),str(entries[0])],
