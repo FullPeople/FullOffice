@@ -26,7 +26,7 @@ public sealed partial class PdfReaderView
     public Task SaveFromShell()=>SaveCurrent();
     public Task ExportCopyFromShell()=>SaveCopy();
     public async Task<bool> ConfirmClose(){
-        if(saving){status.Text="正在保存，请稍候再关闭";return false;}
+        while(saving){status.Text="正在保存，完成后关闭…";await(pendingPdfSave?.Task??Task.CompletedTask);}
         if(!engine.Modified||featureProbeDirectory!=null||smokeDirectory!=null)return true;
         Host.SelectReader(this);
         var result=MessageBox.Show(Host,$"“{Path.GetFileName(currentFile)}”还有未保存的修改。\n选择“是”保存到当前 PDF，“否”放弃修改，或“取消”继续阅读。","关闭标签页",MessageBoxButton.YesNoCancel,MessageBoxImage.Question);
