@@ -49,7 +49,10 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
             let unloaded = dlopen(args[2], RTLD_NOLOAD | RTLD_NOW)
             checks["OfficeLibraryNotLoadedForPDF"] = unloaded == nil
             if let unloaded { dlclose(unloaded) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            // Never hold a main-dispatch callback across the nested CEF loop.
+            // Main-queue work cannot reenter that same callback, while AppKit
+            // run-loop timers continue to deliver events in the native loop.
+            Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { _ in
                 let visible = self.capture(self.pdfWindow, "lazy-pdf-before-office.png")
                 let preliminary: [String: Any] = ["Checks": self.checks, "PDFCompositorBeforeOffice": visible,
                     "Scope": "PDF startup evidence only; does not establish Office integration success"]
@@ -88,7 +91,8 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
                 if self.ready?() == 1 {
                     self.readyDate = Date(); self.checks["NativeDocumentContentReady"] = true
                     self.readiness?.invalidate()
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.finish() }
+                    fputs("LAZY_CONTENT_READY_OBSERVED\n", stderr)
+                    Timer.scheduledTimer(withTimeInterval: 2, repeats: false) { _ in self.finish() }
                 } else if Date().timeIntervalSince(self.started) > 90 {
                     self.failure = "Native Office content-ready timeout"; self.finish()
                 }
@@ -110,13 +114,16 @@ final class LazyDelegate: NSObject, NSApplicationDelegate {
     func finish() {
         guard !finishing else { return }
         finishing = true
+        fputs("LAZY_CAPTURE_BEGIN\n", stderr)
         readiness?.invalidate(); timer?.invalidate()
         checks["ActualPDFCompositorCapture"] = capture(pdfWindow, "lazy-pdf-window.png")
         checks["ActualOfficeCompositorCapture"] = capture(officeWindow, "lazy-office-window.png")
+        fputs("LAZY_CLOSE_REQUEST\n", stderr)
         if running { closeOffice?(); return }
         complete()
     }
     func complete() {
+        fputs("LAZY_SHUTDOWN_BEGIN\n", stderr)
         shutdown?(); officeWindow?.close(); pdfWindow?.close()
         let report: [String: Any] = ["Passed": failure == nil && checks.count == 6 && checks.values.allSatisfy { $0 },
             "Checks": checks, "Failure": failure as Any? ?? NSNull(), "OfficeReadySeconds": readyDate?.timeIntervalSince(started) as Any? ?? NSNull(),
