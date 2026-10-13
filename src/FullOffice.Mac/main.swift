@@ -7,6 +7,7 @@ func probeStage(_ phase: String) {
 }
 
 final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutlineViewDelegate {
+    var openDocument: ((URL) -> Void)?
     let pdf = PDFView()
     let outline = NSOutlineView()
     let sidebar = NSScrollView()
@@ -25,7 +26,7 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
         window.isReleasedWhenClosed = false
         probeStage("window-created")
         let host = NSView(); window.contentView = host
-        let open = NSButton(title: "打开 PDF", target: self, action: #selector(openFile))
+        let open = NSButton(title: "打开文件", target: self, action: #selector(openFile))
         let fit = NSButton(title: "适应整页", target: self, action: #selector(fitPage))
         let width = NSButton(title: "适应宽度", target: self, action: #selector(fitWidth))
         let continuous = NSButton(checkboxWithTitle: "连续滚动", target: self, action: #selector(togglePdfDisplay(_:)))
@@ -77,8 +78,9 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
         pageChanged()
     }
     @objc func openFile() {
-        let panel = NSOpenPanel(); panel.allowedContentTypes = [.pdf]; panel.allowsMultipleSelection = false
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.pdf] + OfficeFileSession.formats.compactMap { UTType(filenameExtension: $0) }; panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let selected = panel.url else { return }
+        if selected.pathExtension.lowercased() != "pdf", let openDocument { openDocument(selected); return }
         do { try load(selected) } catch { NSAlert(error: error).runModal() }
     }
     @objc func fitPage() { pdf.autoScales = true; pdf.scaleFactor = pdf.scaleFactorForSizeToFit }
@@ -113,11 +115,52 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
 
 final class Delegate: NSObject, NSApplicationDelegate {
     var readers: [ReaderWindow] = []
+    var offices: [OfficeCoordinator] = []
+    var officeMessages = [ObjectIdentifier: String]()
+    var officeRoot: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("FullOffice/EditingSessions", isDirectory: true)
+    }
+    func openDocument(_ selected: URL) {
+        if OfficeFileSession.formats.contains(selected.pathExtension.lowercased()) {
+            do {
+                let office = OfficeCoordinator(runtime: try OfficeRuntime.bundled(), root: officeRoot)
+                offices.append(office)
+                office.onState = { [weak self, weak office] message in
+                    guard let self, let office else { return }
+                    self.officeMessages[ObjectIdentifier(office)] = message
+                }
+                office.onFailure = { message in NSAlert(error: OfficeSessionError.message(message)).runModal() }
+                office.onOpen = { [weak self] in self?.openFile() }
+                office.onSaveAs = { [weak self, weak office] in
+                    guard let self, let office, let session = office.session else { return }
+                    let panel = NSSavePanel(); panel.nameFieldStringValue = session.source.lastPathComponent
+                    panel.allowedContentTypes = UTType(filenameExtension: session.source.pathExtension).map { [$0] } ?? [.data]
+                    panel.allowsOtherFileTypes = false
+                    if panel.runModal() == .OK, let target = panel.url { office.requestSaveAs(to: target) }
+                }
+                office.open(selected)
+            } catch { NSAlert(error: error).runModal() }
+            return
+        }
+        let reader = ReaderWindow()
+        reader.openDocument = { [weak self] in self?.openDocument($0) }
+        do { try reader.load(selected); readers.append(reader); reader.showWindow(nil) }
+        catch { NSAlert(error: error).runModal() }
+    }
+    @objc func openFile() {
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.pdf] + OfficeFileSession.formats.compactMap { UTType(filenameExtension: $0) }
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK { for url in panel.urls { openDocument(url) } }
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         probeStage("did-finish-launching")
         let menu = NSMenu(), appMenu = NSMenu(), item = NSMenuItem()
         item.submenu = appMenu; menu.addItem(item)
         appMenu.addItem(withTitle: "退出 FullOffice", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let fileMenu = NSMenu(title: "文件"), fileItem = NSMenuItem(title: "文件", action: nil, keyEquivalent: "")
+        fileItem.submenu = fileMenu; menu.addItem(fileItem)
+        fileMenu.addItem(withTitle: "打开文件…", action: #selector(openFile), keyEquivalent: "o").target = self
         let edit = NSMenu(title: "编辑"), editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: "")
         editItem.submenu = edit; menu.addItem(editItem)
         edit.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
@@ -125,7 +168,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         NSApp.mainMenu = menu
         if CommandLine.arguments.contains("--ui-probe") { runProbe(); return }
         if readers.isEmpty {
-            let reader = ReaderWindow(); readers.append(reader); reader.showWindow(nil)
+            let reader = ReaderWindow(); reader.openDocument = { [weak self] in self?.openDocument($0) }; readers.append(reader); reader.showWindow(nil)
         }
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -135,14 +178,18 @@ final class Delegate: NSObject, NSApplicationDelegate {
             sender.reply(toOpenOrPrint: .success)
             return
         }
-        for filename in filenames {
-            let reader = ReaderWindow()
-            do { try reader.load(URL(fileURLWithPath: filename)); readers.append(reader); reader.showWindow(nil) }
-            catch { NSAlert(error: error).runModal() }
-        }
+        for filename in filenames { openDocument(URL(fileURLWithPath: filename)) }
         sender.reply(toOpenOrPrint: .success)
     }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { !offices.contains { $0.isActive } }
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        if offices.contains(where: { $0.isActive }) {
+            let alert = NSAlert(); alert.messageText = "还有正在打开或编辑的文档"
+            alert.informativeText = "请等待文档打开，在文档窗口中保存或关闭后再退出 FullOffice。"
+            alert.addButton(withTitle: "继续编辑"); alert.runModal(); return .terminateCancel
+        }
+        return .terminateNow
+    }
 
     func runProbe() {
         probeStage("probe-enter")

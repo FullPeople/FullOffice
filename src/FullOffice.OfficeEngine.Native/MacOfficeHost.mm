@@ -15,7 +15,13 @@ static std::filesystem::path profile, document, resource, output;
 static std::mutex outputMutex;
 static std::atomic<bool> keyboardPending{false};
 static bool editProbe = false;
+static bool saveToOriginal = false;
 static std::atomic<bool> documentReady{false}, savedObserved{false};
+static std::atomic<bool> nativeDirty{false}, originalPending{false}, originalFailed{false}, originalUncommitted{false};
+static std::atomic<unsigned long> editRevision{0}, savedRevision{0}, saveSequence{0};
+static std::atomic<bool> closingAfterSave{false};
+static NSTextField* commitStatus = nil;
+static unsigned long commandSequence = 0;
 static std::wstring lastProbeState;
 static void emit(const std::string& text) { std::lock_guard<std::mutex> lock(outputMutex); std::cout << text << std::endl; }
 static std::wstring officeWideString(NSString* value) {
@@ -47,12 +53,24 @@ public:
             }
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_MODIFY_CHANGED && event->m_pData) {
                 auto* data = static_cast<NSEditorApi::CAscDocumentModifyChanged*>(event->m_pData);
+                nativeDirty = data->get_Changed();
+                if (nativeDirty) { ++editRevision; originalUncommitted = true; }
+                dispatch_async(dispatch_get_main_queue(), ^{ [window setDocumentEdited:nativeDirty || originalPending || originalUncommitted]; });
                 emit(data->get_Changed() ? "DIRTY 1" : "DIRTY 0");
             }
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_ONSAVE && event->m_pData) {
                 auto* data = static_cast<NSEditorApi::CAscDocumentOnSaveData*>(event->m_pData);
                 emit(data->get_IsCancel() ? "SAVED CANCEL" : "SAVED OK");
-                if (!data->get_IsCancel()) savedObserved = true;
+                if (!data->get_IsCancel()) {
+                    savedObserved = true;
+                    if (saveToOriginal) {
+                        savedRevision = editRevision.load(); originalPending = true; originalFailed = false;
+                        emit("ORIGINAL_SAVE_REQUEST " + std::to_string(++saveSequence));
+                        dispatch_async(dispatch_get_main_queue(), ^{ [commitStatus setStringValue:@"正在保存到原文件…"]; });
+                    }
+                } else if (closingAfterSave) dispatch_async(dispatch_get_main_queue(), ^{
+                    closingAfterSave = false; [NSApp replyToApplicationShouldTerminate:NO];
+                });
             }
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_DESTROY && manager)
                 manager->GetApplication()->ExitMessageLoop();
@@ -91,29 +109,73 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
     if (wrapper) wrapper->resizeEvent();
 }
 @end
-@interface HostDelegate : NSObject <NSApplicationDelegate>
+@interface HostDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation>
 @end
 @implementation HostDelegate
+- (void)saveDocument:(id)sender {
+    if (editor && documentReady && !originalPending) editor->Apply(editor->CreateCefEvent(ASC_MENU_EVENT_TYPE_CEF_SAVE));
+}
+- (BOOL)validateMenuItem:(NSMenuItem*)item {
+    if ([item action] == @selector(saveDocument:)) return editor && documentReady && !originalPending;
+    return YES;
+}
+- (void)openOtherDocument:(id)sender { emit("OPEN_FILE_REQUEST"); }
+- (void)saveDocumentAs:(id)sender { emit("SAVE_AS_REQUEST"); }
+- (BOOL)windowShouldClose:(NSWindow*)sender { [NSApp terminate:nil]; return NO; }
+- (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication*)sender {
+    if (originalPending) { closingAfterSave = true; return NSTerminateLater; }
+    if (!nativeDirty && (!saveToOriginal || !originalUncommitted)) return NSTerminateNow;
+    NSAlert* alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"保存当前文档的修改？"];
+    [alert setInformativeText:@"保存完成后再关闭文档。"];
+    [alert addButtonWithTitle:@"保存"]; [alert addButtonWithTitle:@"取消"]; [alert addButtonWithTitle:@"不保存"];
+    const NSModalResponse choice = [alert runModal];
+    if (choice == NSAlertSecondButtonReturn) return NSTerminateCancel;
+    if (choice == NSAlertThirdButtonReturn) { emit("DISCARD_REQUESTED"); return NSTerminateNow; }
+    closingAfterSave = true; [self saveDocument:nil]; return NSTerminateLater;
+}
 - (void)application:(NSApplication*)sender openFiles:(NSArray<NSString*>*)files {
     [sender replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
 }
 - (void)applicationDidFinishLaunching:(NSNotification*)notification {
     emit("APPLICATION_LAUNCHED");
     window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1100, 800)
-        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
+        styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable | NSWindowStyleMaskMiniaturizable
         backing:NSBackingStoreBuffered defer:NO];
-    [window setTitle:@"FullOffice · ONLYOFFICE 原生编辑研究"];
+    NSString* title = [[NSProcessInfo processInfo] environment][@"FULLOFFICE_MAC_ORIGINAL_NAME"];
+    [window setTitle:title ? [title stringByAppendingString:@" — FullOffice"] : @"FullOffice · ONLYOFFICE 原生编辑研究"];
     [window center]; [window setReleasedWhenClosed:NO];
+    [window setDelegate:self];
     OfficeParent* parent = [[OfficeParent alloc] initWithFrame:[[window contentView] bounds]];
     [parent setAutoresizingMask:NSViewWidthSizable | NSViewHeightSizable];
     [window setContentView:parent];
+    if (saveToOriginal) {
+        NSView* surface = [[NSView alloc] initWithFrame:[parent frame]];
+        [window setContentView:surface];
+        [parent setFrame:NSMakeRect(0, 28, [surface bounds].size.width, [surface bounds].size.height-28)];
+        [surface addSubview:parent];
+        commitStatus = [NSTextField labelWithString:@"正在打开文档…"];
+        [commitStatus setFrame:NSMakeRect(12, 3, [surface bounds].size.width-24, 22)];
+        [commitStatus setAutoresizingMask:NSViewWidthSizable]; [surface addSubview:commitStatus];
+    }
+    NSMenu* menu = [[NSMenu alloc] init]; NSMenuItem* appItem = [[NSMenuItem alloc] init];
+    NSMenu* appMenu = [[NSMenu alloc] initWithTitle:@"FullOffice"];
+    [appItem setSubmenu:appMenu]; [menu addItem:appItem];
+    [appMenu addItemWithTitle:@"关闭文档" action:@selector(terminate:) keyEquivalent:@"q"];
+    NSMenuItem* fileItem = [[NSMenuItem alloc] initWithTitle:@"文件" action:nil keyEquivalent:@""];
+    NSMenu* fileMenu = [[NSMenu alloc] initWithTitle:@"文件"]; [fileItem setSubmenu:fileMenu]; [menu addItem:fileItem];
+    NSMenuItem* openItem = [fileMenu addItemWithTitle:@"打开其他文档…" action:@selector(openOtherDocument:) keyEquivalent:@"o"]; [openItem setTarget:self];
+    NSMenuItem* saveItem = [fileMenu addItemWithTitle:@"保存" action:@selector(saveDocument:) keyEquivalent:@"s"]; [saveItem setTarget:self];
+    NSMenuItem* saveAsItem = [fileMenu addItemWithTitle:@"另存为…" action:@selector(saveDocumentAs:) keyEquivalent:@"s"];
+    [saveAsItem setKeyEquivalentModifierMask:NSEventModifierFlagCommand | NSEventModifierFlagShift]; [saveAsItem setTarget:self];
+    [NSApp setMainMenu:menu];
     [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES];
     wrapper = new CCefViewWrapper(parent);
     wrapper->resizeEvent();
     __block bool inputStarted = false;
     __block int readinessTicks = 0;
-    if (editProbe) [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
-        if (++readinessTicks > 75) { emit("DOCUMENT_READY_TIMEOUT"); [timer invalidate]; return; }
+    [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
+        if (++readinessTicks > 75 && editProbe) { emit("DOCUMENT_READY_TIMEOUT"); [timer invalidate]; return; }
         if (!documentReady) {
             // Observe real editor state; never change document content through JavaScript.
             editor->ExecuteInAllFrames("(function(){var a=window.Asc&&window.Asc.editor,b=window.editor,c=window.AscCommon&&window.AscCommon.editor;"
@@ -127,6 +189,7 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
         }
         if (inputStarted) return;
         inputStarted = true; [timer invalidate];
+        if (!editProbe) { [commitStatus setStringValue:@"文档已打开"]; return; }
         [window makeKeyAndOrderFront:nil]; [NSApp activateIgnoringOtherApps:YES]; editor->focus(true);
         emit(std::string("INPUT_RESPONDER ") + [NSStringFromClass([[window firstResponder] class]) UTF8String]);
         if (document.extension() == ".xlsx") {
@@ -159,11 +222,43 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
     for (NSView* child in [parent subviews])
         emit(std::string("CHILD_VIEW ") + [NSStringFromClass([child class]) UTF8String]);
     wrapper->resizeEvent();
+    if (saveToOriginal) [NSTimer scheduledTimerWithTimeInterval:0.2 repeats:YES block:^(NSTimer* timer) {
+        const auto readState = [](const char* name) -> NSDictionary* {
+            NSString* path = [NSString stringWithUTF8String:(output / name).c_str()];
+            NSData* bytes = [NSData dataWithContentsOfFile:path];
+            if (!bytes || [bytes length] > 65536) return nil;
+            id value = [NSJSONSerialization JSONObjectWithData:bytes options:0 error:nullptr];
+            return [value isKindOfClass:[NSDictionary class]] ? value : nil;
+        };
+        NSDictionary* command = readState("command.json");
+        if ([command[@"Sequence"] unsignedLongValue] > commandSequence) {
+            commandSequence = [command[@"Sequence"] unsignedLongValue];
+            if ([command[@"Action"] isEqual:@"save"]) [self saveDocument:nil];
+            else if ([command[@"Action"] isEqual:@"close"]) [NSApp terminate:nil];
+        }
+        if (!originalPending) return;
+        NSDictionary* state = readState("commit-state.json");
+        if ([state[@"Sequence"] unsignedLongValue] != saveSequence.load()) return;
+        const bool ok = [state[@"Success"] boolValue];
+        originalPending = false; originalFailed = !ok;
+        if (ok && editRevision == savedRevision && !nativeDirty) originalUncommitted = false;
+        NSString* message = state[@"Message"];
+        if ([message isKindOfClass:[NSString class]]) [commitStatus setStringValue:message];
+        NSString* name = state[@"DocumentName"];
+        if (ok && [name isKindOfClass:[NSString class]]) [window setTitle:[name stringByAppendingString:@" — FullOffice"]];
+        [window setDocumentEdited:nativeDirty || originalUncommitted];
+        emit(ok ? "ORIGINAL_SAVE_ACK OK" : "ORIGINAL_SAVE_ACK FAILED");
+        if (closingAfterSave) {
+            closingAfterSave = false;
+            [NSApp replyToApplicationShouldTerminate:ok && !nativeDirty && !originalUncommitted];
+        }
+    }];
     __block int captureTicks = 0;
-    [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
+    if (editProbe || !saveToOriginal) [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
         ++captureTicks;
         if (editProbe && !savedObserved && captureTicks < 90) return;
         if (!editProbe && captureTicks < 35) return;
+        if (saveToOriginal && (originalPending || originalFailed)) return;
         [timer invalidate];
         NSString* target = [NSString stringWithUTF8String:(output / "native-office-window.png").c_str()];
         NSTask* capture = [[NSTask alloc] init];
@@ -178,6 +273,7 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
 int main(int argc, const char* argv[]) {
     if (argc != 6) return 2;
     editProbe = std::getenv("FULLOFFICE_MAC_NATIVE_EDIT_PROBE") != nullptr;
+    saveToOriginal = std::getenv("FULLOFFICE_MAC_SAVE_TO_ORIGINAL") != nullptr;
     resource = argv[1]; profile = argv[2]; document = argv[3]; output = argv[4];
     const std::filesystem::path editorEntry = argv[5];
     if (!resource.is_absolute() || !profile.is_absolute() || !document.is_absolute() || !output.is_absolute()

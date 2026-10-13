@@ -8,7 +8,9 @@ final class ProcessProbe: NSObject, NSApplicationDelegate {
     let arguments = CommandLine.arguments
     var window: NSWindow!
     let pdf = PDFView()
-    var child: Process?
+    var coordinator: OfficeCoordinator?
+    var child: Process? { coordinator?.worker }
+    var originalBefore: String?
     var timer: Timer?
     var checks = [String: Bool]()
     var failure: String?
@@ -55,24 +57,37 @@ final class ProcessProbe: NSObject, NSApplicationDelegate {
             try capture.run()
             capture.waitUntilExit()
             checks["PDFCompositorCapturedBeforeOfficeStarts"] = capture.terminationStatus == 0
-            let worker = Process()
-            worker.executableURL = URL(fileURLWithPath: arguments[2])
-            worker.arguments = [arguments[3], arguments[4], arguments[5], arguments[6], arguments[7]]
-            worker.environment = ProcessInfo.processInfo.environment.merging(["FULLOFFICE_MAC_NATIVE_EDIT_PROBE": "1"]) { _, value in value }
-            worker.terminationHandler = { process in
-                DispatchQueue.main.async {
-                    self.childExit = process.terminationStatus
-                    self.checks["OwnedNativeOfficeWorkerExitsNormally"] = process.terminationReason == .exit && process.terminationStatus == 0
+            let source = URL(fileURLWithPath: arguments[5])
+            originalBefore = try OfficeFileSession.hash(source)
+            let runtime = OfficeRuntime(executable: URL(fileURLWithPath: arguments[2]), resources: URL(fileURLWithPath: arguments[3]), editorEntry: URL(fileURLWithPath: arguments[7]))
+            let coordinator = OfficeCoordinator(runtime: runtime, root: URL(fileURLWithPath: arguments[4], isDirectory: true))
+            self.coordinator = coordinator
+            coordinator.onExit = { code in
+                    self.childExit = code
+                    self.checks["OwnedNativeOfficeWorkerExitsNormally"] = code == 0
                     self.checks["PDFNavigationContinuesDuringOfficeEditing"] = self.navigations >= 6
                     self.checks["OfficeLibraryStillNotLoadedInPDFParent"] = self.officeUnloaded()
+                    if let session = coordinator.session {
+                        do {
+                            let current = try OfficeFileSession.hash(source)
+                            if let snapshot = session.lastSnapshot, let backup = session.lastBackup {
+                                let saved = try OfficeFileSession.hash(snapshot)
+                                self.checks["NativeSavedEditsCommittedToOriginalByProductCoordinator"] = coordinator.committedSaves > 0 && current != self.originalBefore && current == saved
+                                self.checks["PreviousOriginalBytesRetainedAsBackup"] = (try OfficeFileSession.hash(backup)) == self.originalBefore
+                            } else {
+                                self.checks["NativeSavedEditsCommittedToOriginalByProductCoordinator"] = false
+                                self.checks["PreviousOriginalBytesRetainedAsBackup"] = false
+                            }
+                            self.checks["NoFailedCommitHidden"] = coordinator.saveFailures == 0
+                            try FileManager.default.copyItem(at: session.events.appendingPathComponent("native-office-window.png"), to: self.output.appendingPathComponent("native-office-window.png"))
+                        } catch { self.failure = String(describing: error) }
+                    }
                     self.finish()
-                }
             }
-            child = worker
-            try worker.run()
+            coordinator.open(source, researchEdit: true)
             started = Date()
             timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
-                guard worker.isRunning else { return }
+                guard let worker = coordinator.worker, worker.isRunning else { return }
                 if let document = self.pdf.document, let page = document.page(at: self.navigations % document.pageCount) {
                     self.pdf.go(to: page)
                     if self.pdf.currentPage === page { self.navigations += 1 }
@@ -95,7 +110,7 @@ final class ProcessProbe: NSObject, NSApplicationDelegate {
     }
     func report() -> Bool {
         checks["PDFApplicationLoopReturnsNormallyAfterOfficeWorker"] = returnedNormally
-        let passed = failure == nil && checks.count == 7 && checks.values.allSatisfy { $0 }
+        let passed = failure == nil && checks.count == 10 && checks.values.allSatisfy { $0 }
         var report: [String: Any] = ["Passed": passed, "Checks": checks, "PDFNavigations": navigations,
             "OwnedWorkerPID": child?.processIdentifier ?? 0,
             "Scope": "Authored PDF parent remains responsive while a deferred, separately owned native Office worker edits and saves. Independent document and native teardown verification are also required. No final app, installer or physical-device claim."]

@@ -63,7 +63,10 @@ def exercise(app,out,root,kind='docx',process_host=False):
         subprocess.run(['xcrun','swift',str(root/'tools/create_mac_probe_fixture.swift'),str(pdf)],check=True,timeout=60)
         pdf_hash=hashlib.sha256(pdf.read_bytes()).hexdigest()
         parent=work/'FullOfficeProcessProbe'
-        subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'src/FullOffice.Mac/ProcessOfficeProbe.swift'),
+        parent_source=work/'process-parent';parent_source.mkdir()
+        shutil.copy2(root/'src/FullOffice.Mac/ProcessOfficeProbe.swift',parent_source/'main.swift')
+        subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'src/FullOffice.Mac/OfficeFileSession.swift'),
+            str(root/'src/FullOffice.Mac/OfficeCoordinator.swift'),str(parent_source/'main.swift'),
             '-framework','AppKit','-framework','PDFKit','-o',str(parent)],check=True,timeout=90)
         command=[str(parent),str(pdf),*command]
     started=time.time()
@@ -131,7 +134,7 @@ def exercise(app,out,root,kind='docx',process_host=False):
         checks.update(parent_report['Checks'])
         checks['NativeOfficeDestroyEventObserved']='OFFICE_EVENT 8000' in host_log
         checks['AuthorPDFUnchanged']=hashlib.sha256(pdf.read_bytes()).hexdigest()==pdf_hash
-        expected_checks+=9
+        expected_checks+=12
     shutil.copy2(working,out/('saved-working-probe.'+kind))
     report={'Passed':len(checks)==expected_checks and all(checks.values()),'Checks':checks,'Format':kind,'HostExitCode':code,'OwnedPid':process.pid,
         'Scope':'Actual native ONLYOFFICE Mac editor, authored '+kind.upper()+' and dispatched AppKit input events, native save request and independent package verification; not physical keyboard, complex workbook or final FullOffice integration acceptance.'}
