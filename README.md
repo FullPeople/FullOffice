@@ -1,8 +1,8 @@
 # FullOffice
 
-FullOffice 是正在开发的桌面办公软件。Windows 0.3.2 完整开发包包含 PDF 阅读器、Markdown 和文本编辑器，以及 DOCX、XLSX 和 PPTX 原生编辑组件，支持实际编辑、公式重算与原文件保存。安装版、便携版和签名更新清单已提供官网公共下载。更多格式、定时恢复、兼容性与性能验收及 macOS 移植仍在继续。
+FullOffice 是正在开发的桌面办公软件。Windows 0.3.3 完整开发包包含 PDF 阅读器、Markdown 和文本编辑器，以及 DOCX、XLSX、PPTX、ODT、ODS、ODP、RTF、CSV 原生编辑组件，支持实际编辑、公式重算与原文件保存。增加了默认关闭的定时保存选项，并改善连续跳页时的书签侧栏响应。兼容性与性能验收及 macOS 移植仍在继续。
 
-[Windows 安装版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.2/FullOffice-0.3.2-Setup-windows-x64.exe) · [Windows 便携版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.2/FullOffice-0.3.2-windows-x64.zip) · [官网备用下载](https://dnd.center/)。重要文件建议先用副本试用；开发版的样例检查不等于所有文档的兼容性。
+[Windows 安装版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.3/FullOffice-0.3.3-Setup-windows-x64.exe) · [Windows 便携版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.3/FullOffice-0.3.3-windows-x64.zip) · [官网](https://dnd.center/)。重要文件建议先用副本试用；开发版的样例检查不等于所有文档的兼容性。常见格式测试曾出现编辑器空白及退出后的会话清理失败，后续检查成功，偶发原因仍在调查。
 
 ## 当前可运行的能力
 
@@ -27,9 +27,9 @@ FullOffice 是正在开发的桌面办公软件。Windows 0.3.2 完整开发包�
 | Markdown 与常见文本编辑、预览和保存 | 已实现基础功能，持续测试 |
 | PPTX 演示文稿 | 开发版已接入；基础标题编辑、原文件保存、备份和重开检查通过，复杂演示稿兼容性待验收 |
 | 新建 DOCX／XLSX／PPTX／Markdown | 已接入首页入口及实际文件选择窗口，基础新建、独立解析和标签切换通过 |
-| 其他常见格式导入、导出 | 继续开发 |
+| ODT、ODS、ODP、RTF、CSV | 0.3.3 完整包的实际编辑保存及 RTF 中文重开检查通过；更多文档及偶发问题仍在验收 |
 | Windows 安装、卸载和默认应用候选注册 | 已实现，自包含安装包通过独立安装与卸载检查 |
-| 更新检查、下载校验和安装界面 | 已实现，0.3.2 签名公网下载、运行中保护、同根升级、设置保留、最新检测和普通卸载共 14 项实际检查通过 |
+| 更新检查、下载校验和安装界面 | 0.3.2 签名公网升级 14 项通过；0.3.3 普通升级 10 项及匿名完整包摘要检查通过，新版签名公网升级验收进行中 |
 | macOS 包体 | 待移植和运行验证 |
 
 新建、PPTX、中文识别与默认格式的范围和实际验证见 [本轮验证记录](docs/validation/2026-10-13-new-documents-and-ocr.md)。
