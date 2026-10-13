@@ -22,7 +22,7 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
         let open = NSButton(title: "打开 PDF", target: self, action: #selector(openFile))
         let fit = NSButton(title: "适应整页", target: self, action: #selector(fitPage))
         let width = NSButton(title: "适应宽度", target: self, action: #selector(fitWidth))
-        let continuous = NSButton(checkboxWithTitle: "连续滚动", target: self, action: #selector(changeMode))
+        let continuous = NSButton(checkboxWithTitle: "连续滚动", target: self, action: #selector(togglePdfDisplay(_:)))
         continuous.state = .on
         let fold = NSButton(title: "折叠书签", target: self, action: #selector(collapseBookmarks))
         let controls = NSStackView(views: [open, fit, width, continuous, fold, status])
@@ -81,7 +81,7 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
         guard bounds.width > 0 else { return }
         pdf.autoScales = false; pdf.scaleFactor = max(0.05, (pdf.bounds.width - 24) / bounds.width)
     }
-    @objc func changeMode(_ sender: NSButton) {
+    @objc func togglePdfDisplay(_ sender: NSButton) {
         pdf.displayMode = sender.state == .on ? .singlePageContinuous : .singlePage
     }
     @objc func collapseBookmarks() { outline.collapseItem(nil, collapseChildren: true) }
