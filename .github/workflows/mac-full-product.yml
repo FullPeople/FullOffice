@@ -24,6 +24,8 @@ jobs:
         run: python3 tools/typecheck_mac_office.py
       - name: Exercise file replacement and retained-snapshot recovery
         run: python3 tools/verify_mac_office_sessions.py
+      - name: Verify publisher signatures and streamed update fault responses
+        run: python3 tools/verify_mac_updates.py
       - name: Build the native UI test runner before runtime download
         run: python3 tools/run_mac_recovery_ui.py --compile-only
       - name: Build self-contained app and run actual DOCX and XLSX editing
@@ -51,6 +53,7 @@ jobs:
           path: |
             artifacts/mac-office-abi/
             artifacts/mac-office-session-checks/
+            artifacts/mac-update-checks/
             artifacts/mac-product-ui/
             artifacts/mac-recovery-ui/
             artifacts/mac-text-ui/

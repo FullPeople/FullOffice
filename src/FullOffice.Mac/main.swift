@@ -122,6 +122,8 @@ final class Delegate: NSObject, NSApplicationDelegate {
     var productProbe: ProductProbe?
     var recoveryBusy = false
     var recoveryRootOverride: URL?
+    let updater = MacUpdateController()
+    @objc func checkForUpdates() { updater.check() }
     var officeRoot: URL {
         if let recoveryRootOverride { return recoveryRootOverride }
         if let probe = productProbe { return probe.output.appendingPathComponent("sessions", isDirectory: true) }
@@ -246,6 +248,12 @@ final class Delegate: NSObject, NSApplicationDelegate {
         }
         let menu = NSMenu(), appMenu = NSMenu(), item = NSMenuItem()
         item.submenu = appMenu; menu.addItem(item)
+        updater.canInstall = { [weak self] in
+            guard let self else { return false }
+            return !self.recoveryBusy && !self.offices.contains(where: { $0.isActive }) && !self.texts.contains(where: { $0.window?.isVisible == true || $0.busy })
+        }
+        appMenu.addItem(withTitle: "检查更新…", action: #selector(checkForUpdates), keyEquivalent: "").target = self
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "退出 FullOffice", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileMenu = NSMenu(title: "文件"), fileItem = NSMenuItem(title: "文件", action: nil, keyEquivalent: "")
         fileItem.submenu = fileMenu; menu.addItem(fileItem)
@@ -293,6 +301,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         sender.reply(toOpenOrPrint: .success)
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { !offices.contains { $0.isActive } && !texts.contains { $0.busy } }
+    func applicationWillTerminate(_ notification: Notification) { updater.cancelUpdate() }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if recoveryBusy {
             let alert = NSAlert(); alert.messageText = "正在读取或恢复文档副本"

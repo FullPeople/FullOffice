@@ -49,6 +49,8 @@ def build(upstream,root,out):
     sources=root/'src/FullOffice.Mac'
     subprocess.run(['xcrun','swiftc','-swift-version','5','-O',*full_sources(root),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True,timeout=120)
     build_markdown_preview(root,app)
+    shutil.copy2(sources/'Assets/update-public-key.der', resources/'update-public-key.der')
+    shutil.copy2(sources/'Assets/update-public-key-provenance.json', resources/'update-public-key-provenance.json')
     iconset=out/'FullOffice.iconset';iconset.mkdir()
     for size in [16,32,128,256,512]:
         for retina in [False,True]:
