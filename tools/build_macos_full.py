@@ -29,6 +29,7 @@ def build(upstream,root,out):
         '-I'+str(source/'third_party/desktop-sdk/ChromiumBasedEditors/lib/include'),'-F'+str(host_frameworks),
         str(source/'MacOfficeHost.mm'),'-framework','ascdocumentscore','-framework','AppKit',*search,'-o',str(host_mac/'FullOfficeOfficeHost')]
     subprocess.run(compile,check=True,timeout=90)
+    (out/'host-load-commands.txt').write_text(subprocess.check_output(['otool','-l',str(host_mac/'FullOfficeOfficeHost')],text=True))
     (host/'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleName':'FullOffice 文档编辑','CFBundleExecutable':'FullOfficeOfficeHost',
         'CFBundleIdentifier':'center.dnd.FullOffice.OfficeHost','CFBundlePackageType':'APPL','NSHighResolutionCapable':True}))
     helper=out/'compiled-editors-helper';command=compile.copy();command[command.index(str(source/'MacOfficeHost.mm'))]=str(source/'MacOfficeHelper.cpp');command[-1]=str(helper)
@@ -37,6 +38,7 @@ def build(upstream,root,out):
         relative=os.path.relpath(path,originals).replace(os.sep,'/')
         command.insert(-2,'-Wl,-rpath,@executable_path/../../..'+('' if relative=='.' else '/'+relative))
     subprocess.run(command,check=True,timeout=90)
+    (out/'helper-load-commands.txt').write_text(subprocess.check_output(['otool','-l',str(helper)],text=True))
     for index,name in enumerate(['editors_helper','editors_helper (Renderer)','editors_helper (GPU)']):
         original=originals/(name+'.app');target=host_frameworks/(name+'.app');target_mac=target/'Contents/MacOS';target_mac.mkdir(parents=True)
         info=plistlib.loads((original/'Contents/Info.plist').read_bytes());info['CFBundleIdentifier']='center.dnd.FullOffice.Helper'+str(index)

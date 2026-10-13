@@ -36,6 +36,7 @@ final class OfficeCoordinator {
     private let queue = DispatchQueue(label: "center.dnd.FullOffice.office-session", qos: .userInitiated)
     private var bytes = Data()
     private var log: FileHandle?
+    private var errorLog: FileHandle?
     private var command = 0
     private var forwardResearch = false
     private var saveDestination: (URL, String?)?
@@ -61,7 +62,10 @@ final class OfficeCoordinator {
                 worker.environment = environment
                 worker.standardInput = FileHandle.nullDevice
                 worker.standardOutput = output
-                worker.standardError = FileHandle.nullDevice
+                let errorURL = session.directory.appendingPathComponent("worker-error.log")
+                FileManager.default.createFile(atPath: errorURL.path, contents: nil)
+                self.errorLog = try FileHandle(forWritingTo: errorURL)
+                worker.standardError = self.errorLog
                 let logURL = session.directory.appendingPathComponent("worker.log")
                 FileManager.default.createFile(atPath: logURL.path, contents: nil)
                 self.log = try FileHandle(forWritingTo: logURL)
@@ -87,6 +91,7 @@ final class OfficeCoordinator {
                         self.queue.sync {
                             if !self.bytes.isEmpty { self.line(String(decoding: self.bytes, as: UTF8.self)); self.bytes.removeAll() }
                             try? self.log?.close(); self.log = nil
+                            try? self.errorLog?.close(); self.errorLog = nil
                             DispatchQueue.main.async { self.onExit?(worker.terminationStatus) }
                         }
                     } catch { self.state("办公窗口的状态读取未完成，编辑副本仍保留。") }

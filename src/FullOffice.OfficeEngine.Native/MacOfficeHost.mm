@@ -287,7 +287,13 @@ int main(int argc, const char* argv[]) {
     if (!resource.is_absolute() || !profile.is_absolute() || !document.is_absolute() || !output.is_absolute()
         || !std::filesystem::is_regular_file(document) || !std::filesystem::is_regular_file(editorEntry)) return 2;
     std::filesystem::create_directories(profile); std::filesystem::create_directories(output);
+    emit("HOST_BEFORE_WORKER_CREATION");
+    if (editProbe) {
+        emit(std::string("HOST_MAIN_BUNDLE ") + [[[NSBundle mainBundle] bundlePath] UTF8String]);
+        emit(std::string("HOST_MAIN_FRAMEWORKS ") + [[[NSBundle mainBundle] privateFrameworksPath] UTF8String]);
+    }
     NSAscApplicationWorker* worker = [[NSAscApplicationWorker alloc] initWithCreator:&createManager];
+    emit("HOST_WORKER_CREATED");
     manager = [NSAscApplicationWorker getAppManager];
     auto& settings = manager->m_oSettings;
     // Worker initialization selects a default system path; override it before CEF or font setup.
@@ -300,6 +306,7 @@ int main(int argc, const char* argv[]) {
     settings.system_templates_path = officeWideString([NSString stringWithUTF8String:(resource / "converter/templates").c_str()]);
     settings.macroses_support = false; settings.plugins_support = false; settings.country = "CN";
     manager->SetEventListener(&listener);
+    emit("HOST_BEFORE_CEF_START");
     [worker Start:argc argv:argv];
     emit("CEF_INITIALIZED");
     emit(std::string("APPLICATION_CLASS ") + [NSStringFromClass([NSApp class]) UTF8String]);

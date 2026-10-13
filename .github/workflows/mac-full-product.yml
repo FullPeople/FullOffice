@@ -27,4 +27,5 @@ jobs:
             artifacts/mac-office-abi/
             artifacts/mac-product-ui/
             artifacts/macos-full/bundle-manifest.json
+            artifacts/macos-full/*-load-commands.txt
           if-no-files-found: warn
