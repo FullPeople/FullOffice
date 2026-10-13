@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Windows.Media.Animation;
 using System.Collections.ObjectModel;
 
 namespace FlowOfficeLab;
@@ -12,6 +13,7 @@ public sealed class SmoothList : Grid
     public ListBox List { get; } = new() { Background=Brushes.Transparent, BorderThickness=new(0), HorizontalContentAlignment=HorizontalAlignment.Stretch };
     readonly Canvas overlay=new(){IsHitTestVisible=false};
     readonly Border follower=new(){CornerRadius=new(7),Background=new SolidColorBrush(Color.FromArgb(24,63,100,216)),Opacity=0};
+    readonly TranslateTransform followerPosition=new();
     readonly ObservableCollection<object> visibleItems=new();
     public event Action? ExpansionChanged;
     object[] allItems=Array.Empty<object>();
@@ -19,7 +21,7 @@ public sealed class SmoothList : Grid
     public const double RowHeight=28;
     public bool IsUpdating {get;private set;}
     public SmoothList(){
-        ClipToBounds=true;overlay.Children.Add(follower);Children.Add(overlay);Children.Add(List);List.ItemsSource=visibleItems;
+        ClipToBounds=true;follower.RenderTransform=followerPosition;overlay.Children.Add(follower);Children.Add(overlay);Children.Add(List);List.ItemsSource=visibleItems;
         ScrollViewer.SetHorizontalScrollBarVisibility(List,ScrollBarVisibility.Disabled);
         ScrollViewer.SetCanContentScroll(List,true);
         VirtualizingStackPanel.SetIsVirtualizing(List,true);VirtualizingStackPanel.SetVirtualizationMode(List,VirtualizationMode.Recycling);
@@ -60,7 +62,15 @@ public sealed class SmoothList : Grid
     void MoveTo(ListBoxItem? item){
         if(item==null||!item.IsVisible||item.ActualWidth<=0){follower.Opacity=0;return;}
         var point=item.TranslatePoint(new Point(3,1),this);follower.Opacity=1;
-        Animate(follower,Canvas.LeftProperty,point.X);Animate(follower,Canvas.TopProperty,point.Y);Animate(follower,WidthProperty,Math.Max(0,item.ActualWidth-6));Animate(follower,HeightProperty,item.ActualHeight-2);
+        Follow(TranslateTransform.XProperty,point.X);Follow(TranslateTransform.YProperty,point.Y);
+        follower.Width=Math.Max(0,item.ActualWidth-6);follower.Height=item.ActualHeight-2;
+    }
+    void Follow(DependencyProperty property,double value){
+        double current=(double)followerPosition.GetValue(property);
+        followerPosition.BeginAnimation(property,null);followerPosition.SetValue(property,value);
+        if(SystemParameters.ClientAreaAnimation&&Math.Abs(current-value)>.4)
+            followerPosition.BeginAnimation(property,new DoubleAnimation(current,value,TimeSpan.FromMilliseconds(130)){
+                EasingFunction=new CubicEase{EasingMode=EasingMode.EaseOut},FillBehavior=FillBehavior.Stop});
     }
     public static void Animate(DependencyObject target,DependencyProperty property,double value,int milliseconds=130)=>SmoothMotion.To(target,property,value,milliseconds);
 }
