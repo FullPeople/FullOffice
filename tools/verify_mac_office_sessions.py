@@ -2,6 +2,7 @@
 from pathlib import Path
 from zipfile import ZipFile,ZIP_DEFLATED
 import subprocess,shutil
+from mac_sources import core_sources
 
 root=Path(__file__).resolve().parents[1]
 work=root/'.cache/mac-office-session-checks';work.mkdir(parents=True,exist_ok=False)
@@ -22,6 +23,6 @@ for name in ['missing-relationship','wrong-relationship','external-relationship'
             modified.writestr(entry.filename,content)
 shutil.copy2(root/'tools/mac_office_session_checks.swift',work/'main.swift')
 exe=work/'office-session-checks'
-subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'src/FullOffice.Mac/OfficeFileSession.swift'),str(root/'src/FullOffice.Mac/OfficeRecovery.swift'),str(work/'main.swift'),'-o',str(exe)],check=True,timeout=90)
+subprocess.run(['xcrun','swiftc','-swift-version','5',*core_sources(root),str(work/'main.swift'),'-o',str(exe)],check=True,timeout=90)
 output=root/'artifacts/mac-office-session-checks';output.parent.mkdir(exist_ok=True)
 subprocess.run([str(exe),str(fixtures),str(output)],check=True,timeout=120)

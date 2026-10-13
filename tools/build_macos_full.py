@@ -1,6 +1,8 @@
 """Build a self-contained native Mac candidate from the verified upstream runtime."""
 from pathlib import Path
 import hashlib,json,os,platform,plistlib,shutil,subprocess
+from mac_sources import full_sources
+from build_mac_markdown_preview import build as build_markdown_preview
 
 def digest(path):
     with path.open('rb') as stream:return hashlib.file_digest(stream,'sha256').hexdigest()
@@ -45,8 +47,8 @@ def build(upstream,root,out):
         (target/'Contents/Info.plist').write_bytes(plistlib.dumps(info));shutil.copy2(helper,target_mac/name)
         subprocess.run(['codesign','--force','--sign','-',str(target)],check=True,timeout=30)
     sources=root/'src/FullOffice.Mac'
-    subprocess.run(['xcrun','swiftc','-swift-version','5','-O',str(sources/'OfficeFileSession.swift'),str(sources/'OfficeCoordinator.swift'),
-        str(sources/'OfficeRecovery.swift'),str(sources/'ProductProbe.swift'),str(sources/'main.swift'),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True,timeout=120)
+    subprocess.run(['xcrun','swiftc','-swift-version','5','-O',*full_sources(root),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True,timeout=120)
+    build_markdown_preview(root,app)
     iconset=out/'FullOffice.iconset';iconset.mkdir()
     for size in [16,32,128,256,512]:
         for retina in [False,True]:
@@ -57,7 +59,7 @@ def build(upstream,root,out):
         'CFBundleExecutable':'FullOffice','CFBundlePackageType':'APPL','CFBundleShortVersionString':'0.3.4','CFBundleVersion':'1',
         'CFBundleIconFile':'FullOffice.icns','NSHighResolutionCapable':True,'LSMinimumSystemVersion':'13.0',
         'CFBundleDocumentTypes':[{'CFBundleTypeName':'FullOffice 文档','CFBundleTypeRole':'Editor','LSHandlerRank':'Alternate',
-            'CFBundleTypeExtensions':['docx','xlsx','pptx','odt','ods','odp','rtf','csv']},
+            'CFBundleTypeExtensions':['docx','xlsx','pptx','odt','ods','odp','rtf','csv','md','markdown','txt']},
             {'CFBundleTypeName':'PDF','CFBundleTypeRole':'Viewer','LSHandlerRank':'Alternate','CFBundleTypeExtensions':['pdf']}],
         'NSHumanReadableCopyright':'2026 FullPeople. Office component: ONLYOFFICE; see bundled licenses.'}
     (contents/'Info.plist').write_bytes(plistlib.dumps(info))

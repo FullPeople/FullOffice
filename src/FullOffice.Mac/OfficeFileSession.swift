@@ -62,7 +62,9 @@ private final class OfficeRootRelationshipGuard: NSObject, XMLParserDelegate {
 // The native editor only sees a session copy. Original replacement occurs after
 // a validated stable snapshot, an original-content check and a retained backup.
 final class OfficeFileSession {
-    static let formats: Set<String> = ["docx", "xlsx", "pptx", "odt", "ods", "odp", "rtf", "csv"]
+    static let officeFormats: Set<String> = ["docx", "xlsx", "pptx", "odt", "ods", "odp", "rtf", "csv"]
+    static let textFormats: Set<String> = ["md", "markdown", "txt"]
+    static let formats = officeFormats.union(textFormats)
     private(set) var source: URL
     let directory: URL
     let working: URL
@@ -151,6 +153,7 @@ final class OfficeFileSession {
     static func validate(_ url: URL, format kind: String, integrity: Bool = true) throws {
         try Self.regular(url)
         guard formats.contains(kind) else { throw OfficeSessionError.message("恢复副本的文件格式不受支持。") }
+        if textFormats.contains(kind) { _ = try TextCodec.decode(Data(contentsOf: url)); return }
         if kind == "rtf" {
             let handle = try FileHandle(forReadingFrom: url); defer { try? handle.close() }
             guard let prefix = try handle.read(upToCount: 5), prefix == Data("{\\rtf".utf8) else { throw OfficeSessionError.message("暂存 RTF 文档无效，修改仍保留。") }
@@ -256,8 +259,10 @@ final class OfficeFileSession {
         try record(state: "committed")
         return saved
     }
+    @discardableResult func checkpoint() throws -> URL { try snapshot() }
     func saveAs(to destination: URL, expectedHash: String?) throws {
-        guard destination.isFileURL, destination.pathExtension.lowercased() == source.pathExtension.lowercased() else {
+        let sameTextFormat = Self.textFormats.contains(destination.pathExtension.lowercased()) && Self.textFormats.contains(source.pathExtension.lowercased())
+        guard destination.isFileURL, sameTextFormat || destination.pathExtension.lowercased() == source.pathExtension.lowercased() else {
             throw OfficeSessionError.message("另存文档请保持当前文件格式。")
         }
         let target = destination.standardizedFileURL

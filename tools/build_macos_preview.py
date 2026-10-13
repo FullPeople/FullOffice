@@ -1,6 +1,8 @@
 """Build an honest, unsigned native macOS PDF reading research bundle."""
 from pathlib import Path
 import hashlib,json,platform,plistlib,shutil,subprocess,sys
+from mac_sources import full_sources
+from build_mac_markdown_preview import build as build_markdown_preview
 
 if sys.platform!='darwin':raise RuntimeError('Requires native macOS compiler and frameworks')
 root=Path(__file__).resolve().parents[1];out=root/'artifacts/macos-preview'
@@ -9,9 +11,8 @@ app=out/'FullOffice.app';mac=app/'Contents/MacOS';resources=app/'Contents/Resour
 mac.mkdir(parents=True);resources.mkdir()
 sdk=subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=True).strip()
 subprocess.run(['xcrun','swiftc','-swift-version','5','-O','-sdk',sdk,'-target',platform.machine()+'-apple-macos13.0',
-    str(root/'src/FullOffice.Mac/OfficeFileSession.swift'),str(root/'src/FullOffice.Mac/OfficeCoordinator.swift'),
-    str(root/'src/FullOffice.Mac/OfficeRecovery.swift'),str(root/'src/FullOffice.Mac/ProductProbe.swift'),
-    str(root/'src/FullOffice.Mac/main.swift'),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True)
+    *full_sources(root),'-framework','AppKit','-framework','PDFKit','-o',str(mac/'FullOffice')],check=True)
+build_markdown_preview(root,app)
 iconset=out/'FullOffice.iconset';iconset.mkdir()
 icon=root/'src/FullOffice.Windows/Assets/icon-256.png'
 for size in [16,32,128,256,512]:

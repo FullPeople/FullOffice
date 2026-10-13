@@ -2,6 +2,7 @@
 from pathlib import Path
 from zipfile import ZipFile,ZIP_DEFLATED
 import os,subprocess,shutil,sys,json
+from mac_sources import core_sources
 
 if os.environ.get('GITHUB_ACTIONS')!='true':raise RuntimeError('Requires disposable hosted macOS')
 root=Path(__file__).resolve().parents[1]
@@ -13,8 +14,7 @@ if '--compile-only' in sys.argv:
     subprocess.run([build[0],'build-for-testing',*build[1:]],check=True,timeout=240)
     sys.exit(0)
 shutil.copy2(root/'tools/mac_recovery_ui_fixture.swift',work/'main.swift')
-subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'src/FullOffice.Mac/OfficeFileSession.swift'),
-    str(root/'src/FullOffice.Mac/OfficeRecovery.swift'),str(work/'main.swift'),'-o',str(work/'fixture')],check=True,timeout=90)
+subprocess.run(['xcrun','swiftc','-swift-version','5',*core_sources(root),str(work/'main.swift'),'-o',str(work/'fixture')],check=True,timeout=90)
 app=root/'artifacts/macos-full/FullOffice.app'
 fixtures=work/'authored-files';fixtures.mkdir(exist_ok=False)
 for name,text in [('original','ORIGINAL_BODY_20261014'),('edited','RECOVERED_BODY_20261014')]:
@@ -26,7 +26,7 @@ subprocess.run([str(work/'fixture'),str(fixtures),str(out),str(app)],check=True,
 register='/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister'
 for bundle in [app,app/'Contents/Helpers/FullOfficeOfficeHost.app']:
     subprocess.run([register,'-f',str(bundle)],check=True,timeout=20)
-subprocess.run([build[0],'test-without-building',*build[1:],'-resultBundlePath',str(work/'results.xcresult')],check=True,timeout=360)
+subprocess.run([build[0],'test-without-building',*build[1:],'-only-testing:RecoveryUI/RecoveryUITests','-resultBundlePath',str(work/'results.xcresult')],check=True,timeout=360)
 report=json.loads((out/'report.json').read_text())
 if not report['Passed'] or len(report['Checks'])!=13 or not all(report['Checks'].values()):
     raise RuntimeError('Actual recovery UI checks did not all execute and pass')

@@ -65,7 +65,7 @@ def exercise(app,out,root,kind='docx',process_host=False):
         parent=work/'FullOfficeProcessProbe'
         parent_source=work/'process-parent';parent_source.mkdir()
         shutil.copy2(root/'src/FullOffice.Mac/ProcessOfficeProbe.swift',parent_source/'main.swift')
-        subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'src/FullOffice.Mac/OfficeFileSession.swift'),
+        subprocess.run(['xcrun','swiftc','-swift-version','5',str(root/'src/FullOffice.Mac/TextCodec.swift'),str(root/'src/FullOffice.Mac/OfficeFileSession.swift'),
             str(root/'src/FullOffice.Mac/OfficeCoordinator.swift'),str(parent_source/'main.swift'),
             '-framework','AppKit','-framework','PDFKit','-o',str(parent)],check=True,timeout=90)
         command=[str(parent),str(pdf),*command]

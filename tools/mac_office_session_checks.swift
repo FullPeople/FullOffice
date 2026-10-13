@@ -100,8 +100,39 @@ do {
     let invalidSource = fixtures.appendingPathComponent("missing-relationship.docx")
     let unusedRoot = output.appendingPathComponent("invalid-source-sessions")
     checks["InvalidSourceRejectedBeforeWorkerSessionCreation"] = rejected { _ = try OfficeFileSession(source: invalidSource, root: unusedRoot) } && !files.fileExists(atPath: unusedRoot.path)
+    let unicode = "# 第一章\r\n\r\n**魔法物品** 🐉\r\n"
+    let samples: [(String, Data)] = [("UTF8",Data(unicode.utf8)),("UTF8BOM",Data([0xEF,0xBB,0xBF])+Data(unicode.utf8)),
+        ("UTF16LE",Data([0xFF,0xFE])+unicode.data(using:.utf16LittleEndian)!), ("UTF16BE",Data([0xFE,0xFF])+unicode.data(using:.utf16BigEndian)!)]
+    for (name,data) in samples { let codec = try TextCodec.decode(data); checks[name + "ExactUnicodeAndCRLFRoundTrip"] = try codec.text == unicode && codec.encode(codec.text) == data }
+    checks["InvalidUTF8TextRejected"] = rejected { _ = try TextCodec.decode(Data([0xC3,0x28])) }
+    checks["TruncatedUTF16TextRejected"] = rejected { _ = try TextCodec.decode(Data([0xFF,0xFE,0x41])) }
+    checks["BinaryNULTextRejected"] = rejected { _ = try TextCodec.decode(Data([65,0,66])) }
+    let textRoot = output.appendingPathComponent("text-file")
+    try files.createDirectory(at: textRoot, withIntermediateDirectories: false)
+    let textSource = textRoot.appendingPathComponent("original.md"), textOriginal = samples[1].1
+    try textOriginal.write(to: textSource)
+    let text = try OfficeFileSession(source: textSource, root: textRoot.appendingPathComponent("sessions"))
+    let textCodec = try TextCodec.decode(textOriginal), changed = try textCodec.encode(unicode + "已编辑\n")
+    try changed.write(to: text.working); try text.commit()
+    checks["MarkdownActualOriginalSavePreservesEncodingAndNewlines"] = try Data(contentsOf: textSource) == changed
+    checks["MarkdownActualPreviousOriginalKeptAsBackup"] = try Data(contentsOf: text.lastBackup!) == textOriginal
+    let checkpoint = try textCodec.encode(unicode + "恢复内容\n")
+    try checkpoint.write(to: text.working); try text.checkpoint()
+    checks["MarkdownRecoveryCheckpointDoesNotWriteOriginal"] = try Data(contentsOf: textSource) == changed
+    let textEntry = try OfficeRecovery.list(root: textRoot.appendingPathComponent("sessions"))[0]
+    let textRecovery = textRoot.appendingPathComponent("recovered.md")
+    try OfficeRecovery.export(textEntry, to: textRecovery)
+    checks["MarkdownActualRecoveryExportsEncodedCheckpoint"] = try Data(contentsOf: textRecovery) == checkpoint
+    let externalText = Data("外部的新内容\n".utf8); try externalText.write(to: textSource)
+    checks["MarkdownExternalOriginalChangeRejected"] = rejected { try text.commit() }
+    checks["MarkdownExternalOriginalBytesPreserved"] = try Data(contentsOf: textSource) == externalText
+    let textAlternate = textRoot.appendingPathComponent("new-document.txt")
+    try text.saveAs(to: textAlternate, expectedHash: nil)
+    checks["MarkdownSaveAsTextAliasWritesChosenDestination"] = try Data(contentsOf: textAlternate) == checkpoint && Data(contentsOf: textSource) == externalText
+    try changed.write(to: text.working); try text.commit()
+    checks["TextAliasLaterSaveKeepsOldOriginalUntouched"] = try Data(contentsOf: textAlternate) == changed && Data(contentsOf: textSource) == externalText
 } catch { failure = String(describing: error) }
-let passed = failure == nil && checks.count == 38 && checks.values.allSatisfy { $0 }
+let passed = failure == nil && checks.count == 53 && checks.values.allSatisfy { $0 }
 var report: [String: Any] = ["Passed": passed, "Checks": checks,
     "Scope": "Real macOS file coordination, backup, invalid-save rejection, external conflict, read-only, Save As and retained-snapshot recovery/export/lifecycle; no editor or recovery-dialog execution claim."]
 if let failure { report["Failure"] = failure }

@@ -116,6 +116,8 @@ final class ReaderWindow: NSWindowController, NSOutlineViewDataSource, NSOutline
 final class Delegate: NSObject, NSApplicationDelegate {
     var readers: [ReaderWindow] = []
     var offices: [OfficeCoordinator] = []
+    var texts: [TextDocumentWindow] = []
+    var quitAfterTextSaves = false
     var officeMessages = [ObjectIdentifier: String]()
     var productProbe: ProductProbe?
     var recoveryBusy = false
@@ -127,7 +129,8 @@ final class Delegate: NSObject, NSApplicationDelegate {
             .appendingPathComponent("FullOffice/EditingSessions", isDirectory: true)
     }
     func openDocument(_ selected: URL) {
-        if OfficeFileSession.formats.contains(selected.pathExtension.lowercased()) {
+        if OfficeFileSession.textFormats.contains(selected.pathExtension.lowercased()) { openText(selected); return }
+        if OfficeFileSession.officeFormats.contains(selected.pathExtension.lowercased()) {
             do {
                 let office = OfficeCoordinator(runtime: try OfficeRuntime.bundled(), root: officeRoot)
                 offices.append(office)
@@ -162,6 +165,25 @@ final class Delegate: NSObject, NSApplicationDelegate {
         do { try reader.load(selected); readers.append(reader); reader.showWindow(nil) }
         catch { NSAlert(error: error).runModal() }
     }
+    func openText(_ selected: URL?) {
+        let text = TextDocumentWindow(source: selected, root: officeRoot)
+        texts.append(text)
+        text.openDocument = { [weak self] in self?.openDocument($0) }
+        text.onSaved = { [weak self] success in
+            guard let self else { return }
+            if !success { self.quitAfterTextSaves = false }
+            if !self.texts.contains(where: { $0.busy }) && self.texts.contains(where: { $0.window?.isVisible == true && $0.dirty }) { self.quitAfterTextSaves = false }
+            if self.quitAfterTextSaves && !self.texts.contains(where: { $0.window?.isVisible == true && ($0.dirty || $0.busy) }) {
+                for document in self.texts where document.window?.isVisible == true { document.finish(discarded: false) }
+            }
+        }
+        text.onClosed = { [weak self] in
+            guard let self else { return }
+            if self.quitAfterTextSaves && !self.texts.contains(where: { $0.window?.isVisible == true }) { NSApp.terminate(nil) }
+        }
+        text.showWindow(nil)
+    }
+    @objc func newMarkdown() { openText(nil) }
     @objc func openFile() {
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.pdf] + OfficeFileSession.formats.compactMap { UTType(filenameExtension: $0) }
         panel.allowsMultipleSelection = true
@@ -169,7 +191,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
     }
     @objc func recoverDocuments() {
         guard !recoveryBusy else { return }
-        if offices.contains(where: { $0.isActive }) {
+        if offices.contains(where: { $0.isActive }) || texts.contains(where: { $0.window?.isVisible == true }) {
             let alert = NSAlert(); alert.messageText = "请先关闭正在编辑的文档"
             alert.informativeText = "恢复列表只读取已经结束的编辑会话。"
             alert.addButton(withTitle: "继续编辑"); alert.runModal(); return
@@ -227,12 +249,21 @@ final class Delegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(withTitle: "退出 FullOffice", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileMenu = NSMenu(title: "文件"), fileItem = NSMenuItem(title: "文件", action: nil, keyEquivalent: "")
         fileItem.submenu = fileMenu; menu.addItem(fileItem)
+        fileMenu.addItem(withTitle: "新建 Markdown", action: #selector(newMarkdown), keyEquivalent: "n").target = self
         fileMenu.addItem(withTitle: "打开文件…", action: #selector(openFile), keyEquivalent: "o").target = self
+        fileMenu.addItem(withTitle: "保存", action: #selector(TextDocumentWindow.saveDocument(_:)), keyEquivalent: "s")
+        let saveAs = fileMenu.addItem(withTitle: "另存为…", action: #selector(TextDocumentWindow.saveDocumentAs(_:)), keyEquivalent: "s")
+        saveAs.keyEquivalentModifierMask = [.command,.shift]
         fileMenu.addItem(withTitle: "恢复文档副本…", action: #selector(recoverDocuments), keyEquivalent: "").target = self
         let edit = NSMenu(title: "编辑"), editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: "")
         editItem.submenu = edit; menu.addItem(editItem)
+        edit.addItem(withTitle: "撤销", action: NSSelectorFromString("undo:"), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "重做", action: NSSelectorFromString("redo:"), keyEquivalent: "z"); redo.keyEquivalentModifierMask = [.command,.shift]
+        edit.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
         edit.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let find = edit.addItem(withTitle: "查找…", action: NSSelectorFromString("performTextFinderAction:"), keyEquivalent: "f"); find.tag = 1
         NSApp.mainMenu = menu
         if CommandLine.arguments.contains("--office-ui-probe") {
             do { productProbe = try ProductProbe(owner: self, arguments: CommandLine.arguments); productProbe?.start() }
@@ -240,6 +271,13 @@ final class Delegate: NSObject, NSApplicationDelegate {
             return
         }
         if CommandLine.arguments.contains("--ui-probe") { runProbe(); return }
+        if let index = CommandLine.arguments.firstIndex(of: "--text-ui-file") {
+            guard ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] == "true", recoveryRootOverride != nil,
+                  CommandLine.arguments.count > index + 2 else { exit(2) }
+            openDocument(URL(fileURLWithPath: CommandLine.arguments[index+1]))
+            startTextUIEvidence(owner: self, output: URL(fileURLWithPath: CommandLine.arguments[index+2]))
+            return
+        }
         if readers.isEmpty {
             let reader = ReaderWindow(); reader.openDocument = { [weak self] in self?.openDocument($0) }; readers.append(reader); reader.showWindow(nil)
         }
@@ -254,7 +292,7 @@ final class Delegate: NSObject, NSApplicationDelegate {
         for filename in filenames { openDocument(URL(fileURLWithPath: filename)) }
         sender.reply(toOpenOrPrint: .success)
     }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { !offices.contains { $0.isActive } }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { !offices.contains { $0.isActive } && !texts.contains { $0.busy } }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         if recoveryBusy {
             let alert = NSAlert(); alert.messageText = "正在读取或恢复文档副本"
@@ -265,6 +303,26 @@ final class Delegate: NSObject, NSApplicationDelegate {
             let alert = NSAlert(); alert.messageText = "还有正在打开或编辑的文档"
             alert.informativeText = "请等待文档打开，在文档窗口中保存或关闭后再退出 FullOffice。"
             alert.addButton(withTitle: "继续编辑"); alert.runModal(); return .terminateCancel
+        }
+        let active = texts.filter { $0.window?.isVisible == true }
+        if active.contains(where: { $0.busy }) {
+            let alert = NSAlert(); alert.messageText = "正在打开或保存文本"
+            alert.addButton(withTitle: "继续等待"); alert.runModal(); return .terminateCancel
+        }
+        if active.contains(where: { $0.dirty }) {
+            let alert = NSAlert(); alert.messageText = "保存未保存的文本修改？"
+            alert.addButton(withTitle: "保存全部"); alert.addButton(withTitle: "取消"); alert.addButton(withTitle: "不保存")
+            let choice = alert.runModal()
+            if choice == .alertSecondButtonReturn { return .terminateCancel }
+            quitAfterTextSaves = true
+            if choice == .alertThirdButtonReturn { for text in active { text.finish(discarded: true) } }
+            else { for text in active where text.dirty { text.saveDocument(nil) } }
+            return .terminateCancel
+        }
+        if !active.isEmpty {
+            quitAfterTextSaves = true
+            for text in active { text.finish(discarded: false) }
+            return .terminateCancel
         }
         return .terminateNow
     }

@@ -25,6 +25,8 @@ jobs:
         run: python3 tools/inspect_mac_office_engine.py --product-host
       - name: Operate actual recovery menu and system Save panel
         run: python3 tools/run_mac_recovery_ui.py
+      - name: Edit Markdown and operate lazy preview and system Save As
+        run: python3 tools/run_mac_text_ui.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -34,6 +36,7 @@ jobs:
             artifacts/mac-office-session-checks/
             artifacts/mac-product-ui/
             artifacts/mac-recovery-ui/
+            artifacts/mac-text-ui/
             artifacts/macos-full/bundle-manifest.json
             artifacts/macos-full/*-load-commands.txt
           if-no-files-found: warn
