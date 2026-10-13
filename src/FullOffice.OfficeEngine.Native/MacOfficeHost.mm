@@ -18,6 +18,8 @@ static std::mutex outputMutex;
 static std::atomic<bool> keyboardPending{false};
 static bool editProbe = false;
 static bool saveToOriginal = false;
+static std::string closeProbe;
+static bool closePromptProbed = false;
 static std::atomic<bool> documentReady{false}, savedObserved{false};
 static std::atomic<bool> nativeDirty{false}, originalPending{false}, originalFailed{false}, originalUncommitted{false};
 static std::atomic<unsigned long> editRevision{0}, savedRevision{0}, saveSequence{0};
@@ -96,13 +98,36 @@ static void nativeKey(NSString* text, unsigned short code, NSEventModifierFlags 
         [NSApp sendEvent:event];
     }
 }
+static void captureOfficeWindow() {
+    NSString* target = [NSString stringWithUTF8String:(output / "native-office-window.png").c_str()];
+    NSTask* capture = [[NSTask alloc] init];
+    [capture setLaunchPath:@"/usr/sbin/screencapture"];
+    [capture setArguments:@[@"-x", @"-l", [NSString stringWithFormat:@"%ld", [window windowNumber]], target]];
+    [capture launch]; [capture waitUntilExit];
+    emit("CAPTURE_EXIT " + std::to_string([capture terminationStatus]));
+}
+static void probeFinishedInput() {
+    emit("NATIVE_INPUT_COMPLETE");
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        if (!closeProbe.empty()) {
+            if (!nativeDirty || !originalUncommitted) { emit("DIRTY_CLOSE_PROBE_NOT_DIRTY"); return; }
+            captureOfficeWindow();
+            [NSApp terminate:nil];
+            if (closeProbe == "cancel") dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                if (!nativeDirty || !originalUncommitted || !editor || ![window isVisible]) return;
+                emit("CANCELLED_CLOSE_KEPT_DIRTY_EDITOR");
+                editor->Apply(editor->CreateCefEvent(ASC_MENU_EVENT_TYPE_CEF_SAVE));
+                emit("NATIVE_SAVE_REQUESTED");
+            });
+            return;
+        }
+        editor->Apply(editor->CreateCefEvent(ASC_MENU_EVENT_TYPE_CEF_SAVE));
+        emit("NATIVE_SAVE_REQUESTED");
+    });
+}
 static void inputProbeCharacter(NSString* text, NSUInteger index) {
     if (index == [text length]) {
-        emit("NATIVE_INPUT_COMPLETE");
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            editor->Apply(editor->CreateCefEvent(ASC_MENU_EVENT_TYPE_CEF_SAVE));
-            emit("NATIVE_SAVE_REQUESTED");
-        });
+        probeFinishedInput();
         return;
     }
     nativeKey([text substringWithRange:NSMakeRange(index, 1)], 0);
@@ -140,9 +165,19 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
     [alert setMessageText:@"保存当前文档的修改？"];
     [alert setInformativeText:@"保存完成后再关闭文档。"];
     [alert addButtonWithTitle:@"保存"]; [alert addButtonWithTitle:@"取消"]; [alert addButtonWithTitle:@"不保存"];
+    if (!closeProbe.empty() && !closePromptProbed) {
+        closePromptProbed = true;
+        emit("DIRTY_CLOSE_PROMPT_SHOWN");
+        const NSUInteger index = closeProbe == "cancel" ? 1 : closeProbe == "discard" ? 2 : 0;
+        NSTimer* click = [NSTimer timerWithTimeInterval:0.5 repeats:NO block:^(NSTimer* timer) {
+            [[alert buttons][index] performClick:nil];
+        }];
+        [[NSRunLoop mainRunLoop] addTimer:click forMode:NSModalPanelRunLoopMode];
+    }
     const NSModalResponse choice = [alert runModal];
-    if (choice == NSAlertSecondButtonReturn) return NSTerminateCancel;
+    if (choice == NSAlertSecondButtonReturn) { emit("CLOSE_CHOICE CANCEL"); return NSTerminateCancel; }
     if (choice == NSAlertThirdButtonReturn) { emit("DISCARD_REQUESTED"); return NSTerminateNow; }
+    emit("CLOSE_CHOICE SAVE");
     closingAfterSave = true; [self saveDocument:nil]; return NSTerminateCancel;
 }
 - (void)application:(NSApplication*)sender openFiles:(NSArray<NSString*>*)files {
@@ -206,10 +241,7 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
         if (document.extension() == ".xlsx") {
             nativeKey(@"\uF729", 115, NSEventModifierFlagCommand);
             nativeKey(@"1", 18); nativeKey(@"0", 29); nativeKey(@"\r", 36);
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                editor->Apply(editor->CreateCefEvent(ASC_MENU_EVENT_TYPE_CEF_SAVE));
-                emit("NATIVE_SAVE_REQUESTED");
-            });
+            probeFinishedInput();
             return;
         }
         NSPoint location = NSMakePoint(400, std::max(180.0, parent.frame.size.height - 330.0));
@@ -265,18 +297,13 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
         }
     }];
     __block int captureTicks = 0;
-    if (editProbe || !saveToOriginal) [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
+    if ((editProbe && closeProbe != "save" && closeProbe != "discard") || !saveToOriginal) [NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer* timer) {
         ++captureTicks;
         if (editProbe && !savedObserved && captureTicks < 90) return;
         if (!editProbe && captureTicks < 35) return;
         if (saveToOriginal && (originalPending || originalFailed)) return;
         [timer invalidate];
-        NSString* target = [NSString stringWithUTF8String:(output / "native-office-window.png").c_str()];
-        NSTask* capture = [[NSTask alloc] init];
-        [capture setLaunchPath:@"/usr/sbin/screencapture"];
-        [capture setArguments:@[@"-x", @"-l", [NSString stringWithFormat:@"%ld", [window windowNumber]], target]];
-        [capture launch]; [capture waitUntilExit];
-        emit("CAPTURE_EXIT " + std::to_string([capture terminationStatus]));
+        captureOfficeWindow();
         [NSApp terminate:nil];
     }];
 }
@@ -285,6 +312,12 @@ int main(int argc, const char* argv[]) {
     if (argc != 6) return 2;
     editProbe = std::getenv("FULLOFFICE_MAC_NATIVE_EDIT_PROBE") != nullptr;
     saveToOriginal = std::getenv("FULLOFFICE_MAC_SAVE_TO_ORIGINAL") != nullptr;
+    if (editProbe && saveToOriginal && std::getenv("GITHUB_ACTIONS") && std::string(std::getenv("GITHUB_ACTIONS")) == "true") {
+        if (const char* scenario = std::getenv("FULLOFFICE_MAC_CLOSE_PROBE")) {
+            closeProbe = scenario;
+            if (closeProbe != "cancel" && closeProbe != "save" && closeProbe != "discard") return 2;
+        }
+    }
     resource = argv[1]; profile = argv[2]; document = argv[3]; output = argv[4];
     const std::filesystem::path editorEntry = argv[5];
     if (!resource.is_absolute() || !profile.is_absolute() || !document.is_absolute() || !output.is_absolute()

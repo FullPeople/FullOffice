@@ -22,13 +22,16 @@ def run(app,root,out):
     out.mkdir(parents=True,exist_ok=False)
     pdf=out/'authored.pdf';subprocess.run(['xcrun','swift',str(root/'tools/create_mac_probe_fixture.swift'),str(pdf)],check=True,timeout=60)
     pdf_hash=hashlib.sha256(pdf.read_bytes()).hexdigest();reports=[]
-    for kind in ['docx','xlsx']:
-        case=out/kind;case.mkdir();author=case/('author.'+kind);fixture(author,kind)
+    for kind,scenario in [('docx',''),('xlsx',''),('docx','cancel'),('docx','save'),('docx','discard')]:
+        case=out/(kind+('-close-'+scenario if scenario else ''));case.mkdir();author=case/('author.'+kind);fixture(author,kind)
         before=hashlib.sha256(author.read_bytes()).hexdigest();working=case/('selected.'+kind);shutil.copy2(author,working)
         probe=case/'probe'
+        environment=dict(os.environ)
+        environment.pop('FULLOFFICE_MAC_CLOSE_PROBE',None)
+        if scenario:environment['FULLOFFICE_MAC_CLOSE_PROBE']=scenario
         with (case/'product.log').open('wb') as log:
             process=subprocess.Popen([str(app/'Contents/MacOS/FullOffice'),'--office-ui-probe',str(pdf),str(working),str(probe)],
-                stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
+                stdout=log,stderr=subprocess.STDOUT,start_new_session=True,env=environment)
             try:code=process.wait(timeout=140)
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid,signal.SIGKILL);process.wait(timeout=15);code=process.returncode
@@ -40,7 +43,10 @@ def run(app,root,out):
         checks['ActualOfficeBodyRendered']=image.is_file() and subprocess.run(['xcrun','swift',str(root/'tools/mac_office_ocr.swift'),str(image),str(case/'recognized.json')],timeout=90).returncode==0
         with ZipFile(working) as saved:
             checks['SavedZIPValid']=saved.testzip() is None
-            if kind=='docx':checks['NativeTypedTextActuallySaved']='MAC_NATIVE_EDIT_SAVED_20261013' in ''.join(ET.fromstring(saved.read('word/document.xml')).itertext())
+            if kind=='docx':
+                typed='MAC_NATIVE_EDIT_SAVED_20261013' in ''.join(ET.fromstring(saved.read('word/document.xml')).itertext())
+                if scenario=='discard':checks['DiscardedTextAbsentFromOriginal']=not typed and hashlib.sha256(working.read_bytes()).hexdigest()==before
+                else:checks['NativeTypedTextActuallySaved']=typed
             else:
                 ns={'s':'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
                 cells={c.get('r'):c for c in ET.fromstring(saved.read('xl/worksheets/sheet1.xml')).findall('.//s:c',ns)}
@@ -49,10 +55,11 @@ def run(app,root,out):
                 checks['FormulaActuallyRecalculated']=values['A3']=='12'
                 checks['OriginalFormulaPreserved']=cells['A3'].findtext('s:f',namespaces=ns)=='SUM(A1:A2)'
                 (case/'independent-values.json').write_text(json.dumps(values,indent=2))
-        report['Passed']=report['Passed'] and len(checks)==(20 if kind=='docx' else 22) and all(checks.values())
-        report['ExitCode']=code;report['Format']=kind
+        expected=(20 if kind=='docx' else 22)+(3 if scenario else 0)
+        report['Passed']=report['Passed'] and len(checks)==expected and all(checks.values())
+        report['ExitCode']=code;report['Format']=kind;report['CloseScenario']=scenario
         (case/'report.json').write_text(json.dumps(report,indent=2));reports.append(report)
-        print(json.dumps({'Format':kind,'Passed':report['Passed'],'Checks':checks}),flush=True)
+        print(json.dumps({'Format':kind,'CloseScenario':scenario,'Passed':report['Passed'],'Checks':checks}),flush=True)
         if not report['Passed']:
             # Diagnose only the newly built, owned worker and authored fixture.
             # Do not let a reference/debug run turn this failed app check green.
