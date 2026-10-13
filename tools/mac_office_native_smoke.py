@@ -79,6 +79,16 @@ def exercise(app,out,root):
         # same authored document and desktop; this cannot make the host pass.
         if __import__('os').environ.get('GITHUB_ACTIONS')!='true':
             raise RuntimeError('Upstream reference requires the disposable hosted runner')
+        installed_reference=Path.home()/'Applications/FullOfficeOnlyOfficeReference.app'
+        if installed_reference.exists():raise RuntimeError('Reference installation path is not pristine')
+        installed_reference.parent.mkdir(exist_ok=True)
+        # Run an ordinary installed bundle. The signed DMG copy otherwise stops
+        # at "Move to Applications folder?", which does not test its editor.
+        subprocess.run(['ditto',str(app),str(installed_reference)],check=True,timeout=180)
+        subprocess.run(['codesign','--verify','--deep','--strict',str(installed_reference)],check=True,timeout=60)
+        app=installed_reference
+        (out/'upstream-reference-installation.json').write_text(json.dumps({'Bundle':str(app),'SignatureVerifiedAfterCopy':True,
+            'Scope':'One dedicated user Applications bundle in the disposable hosted VM; original read-only DMG unmodified'},indent=2))
         bundle_id=plistlib.loads((app/'Contents/Info.plist').read_bytes())['CFBundleIdentifier']
         # Sparkle first launch otherwise blocks this control behind its update prompt.
         # Set only this fresh hosted VM's upstream preference, before the first launch.
