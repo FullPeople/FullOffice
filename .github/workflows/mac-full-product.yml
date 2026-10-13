@@ -1,0 +1,64 @@
+name: Self-contained native Mac product application
+on:
+  push:
+    branches: [codex/macos-full-app-20261014]
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Build the native Installer candidate after all application checks
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Compile production UI before runtime download
+        run: python3 tools/typecheck_mac_office.py
+      - name: Exercise file replacement and retained-snapshot recovery
+        run: python3 tools/verify_mac_office_sessions.py
+      - name: Verify publisher signatures and streamed update fault responses
+        run: python3 tools/verify_mac_updates.py
+      - name: Build the native UI test runner before runtime download
+        run: python3 tools/run_mac_recovery_ui.py --compile-only
+      - name: Build self-contained app and run actual DOCX and XLSX editing
+        run: python3 tools/inspect_mac_office_engine.py --product-host
+      - name: Operate actual recovery menu and system Save panel
+        run: python3 tools/run_mac_recovery_ui.py
+      - name: Edit Markdown and operate lazy preview and system Save As
+        run: python3 tools/run_mac_text_ui.py
+      - name: Package the validated application for native Installer
+        if: github.event_name == 'workflow_dispatch' && inputs.package
+        run: python3 tools/package_macos_full.py
+      - name: Install repair run and uninstall the candidate
+        if: github.event_name == 'workflow_dispatch' && inputs.package
+        run: python3 tools/verify_mac_install.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: success() && github.event_name == 'workflow_dispatch' && inputs.package
+        with:
+          name: mac-installer-${{ matrix.runner }}-${{ github.run_id }}
+          path: artifacts/mac-package/*.pkg
+          if-no-files-found: error
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: mac-product-${{ matrix.runner }}-${{ github.run_id }}
+          path: |
+            artifacts/mac-office-abi/
+            artifacts/mac-office-session-checks/
+            artifacts/mac-update-checks/
+            artifacts/mac-product-ui/
+            artifacts/mac-recovery-ui/
+            artifacts/mac-text-ui/
+            artifacts/mac-package/package.json
+            artifacts/mac-install-checks/
+            artifacts/macos-full/bundle-manifest.json
+            artifacts/macos-full/*-load-commands.txt
+          if-no-files-found: warn

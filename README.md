@@ -4,7 +4,7 @@ FullOffice 是正在开发的桌面办公软件。Windows 0.3.4 完整开发包�
 
 [Windows 安装版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.4/FullOffice-0.3.4-Setup-windows-x64.exe) · [Windows 便携版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.4/FullOffice-0.3.4-windows-x64.zip) · [官网](https://dnd.center/)。重要文件建议先用副本试用；开发版的样例检查不等于所有文档的兼容性。已复现的恢复记录清理缺陷已修复并通过真实文件锁与异常退出检查；偶发原生编辑器空白仍在调查。
 
-## 当前可运行的能力
+## Windows 当前可运行的能力
 
 - PDF 快速预览、适宽与清晰整页适应，按需渲染和相邻页缓存。
 - 多标签、最近记录、完整书签层级与编辑、批注和高亮。
@@ -30,7 +30,7 @@ FullOffice 是正在开发的桌面办公软件。Windows 0.3.4 完整开发包�
 | ODT、ODS、ODP、RTF、CSV | 0.3.4 完整包的五格式保存、RTF 中文重开及异常退出恢复共 29 项检查通过；更多文档及偶发问题仍在验收 |
 | Windows 安装、卸载和默认应用候选注册 | 已实现，自包含安装包通过独立安装与卸载检查 |
 | 更新检查、下载校验和安装界面 | 0.3.4 普通升级 10 项、签名公网升级 14 项及公开两包全文摘要核验通过，涵盖实际完整下载、运行中保护、同根安装、设置和默认选择保留、最新检测、卸载与缓存清理 |
-| macOS 包体 | 待移植和运行验证 |
+| macOS 包体 | 自包含开发候选已在两种架构完成 DOCX／XLSX、Markdown 和恢复操作验证；ARM 原生安装、修复和管理员授权卸载通过。完整更新与 PDF 功能补齐继续进行，范围见 [macOS 验证记录](docs/macos-preview.md) |
 
 新建、PPTX、中文识别与默认格式的范围和实际验证见 [本轮验证记录](docs/validation/2026-10-13-new-documents-and-ocr.md)。
 

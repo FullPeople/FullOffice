@@ -1,0 +1,7 @@
+{
+  "Source": "src/FullTools.Distribution/UpdatePublicKey.h",
+  "PublicDER_SHA256": "2afd9ae0596d8626863001cc81ee46b38ca35d946e7e4f4814e0f4092910a056",
+  "Bits": 3072,
+  "PrivateKeyRead": false,
+  "PublicCNG_SHA256": "a3f08cda1388c367081a9ef5f2c5cbc40415b312f1577224e4970fb56fc30ffe"
+}

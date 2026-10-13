@@ -1,0 +1,33 @@
+name: Deferred Office worker and responsive PDF parent
+on:
+  push:
+    branches: [codex/macos-office-worker-20261014]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  mac:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, macos-15-intel]
+        format: [docx, xlsx]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Compile the PDF parent before downloading Office
+        run: python3 tools/typecheck_mac_office.py
+      - name: Verify original saves, backups and conflicts on real macOS files
+        if: matrix.format == 'docx'
+        run: python3 tools/verify_mac_office_sessions.py
+      - name: Edit and save with an owned native worker while PDF navigation continues
+        run: python3 tools/inspect_mac_office_engine.py --native-window --process-host --native-kind ${{ matrix.format }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: mac-office-process-${{ matrix.runner }}-${{ matrix.format }}-${{ github.run_id }}
+          path: |
+            artifacts/mac-office-abi/
+            artifacts/mac-office-session-checks/
+          if-no-files-found: warn

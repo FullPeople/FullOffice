@@ -9,6 +9,8 @@ Upstream: https://github.com/ONLYOFFICE/desktop-sdk
 Exact SDK revision: 6bd2051287a496ac1504214caca69a5729625696
 Exact core revision: b18715ae811aaa5cd9dae2dd9a4b9412d38b8b7b
 
-The C++ host runs separately from the FullOffice Windows application.
-Installed runtime binaries and import libraries are not included in this source.
-The currently validated FullOffice 0.2.0 candidate package does not contain this runtime.
+The C++ host runs separately from the FullOffice application on Windows and macOS.
+Upstream runtime binaries and import libraries are not included in this source tree.
+Complete application packages include the pinned ONLYOFFICE runtime and its notices.
+The application, the native Office bridge, and bundled third-party components retain
+their respective licenses; the complete dependency tree is not licensed solely under MIT.
