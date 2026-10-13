@@ -54,10 +54,39 @@ static class OfficeRecoveryProbe
             }
             store.InitializeAsync(directory, source, 0, 0).GetAwaiter().GetResult();
             store.SnapshotSavedAsync(directory, working).GetAwaiter().GetResult();
+            entry = store.FindAsync().GetAwaiter().GetResult().Single();
             File.WriteAllText(working, "corrupt snapshot");
+            string independent = Path.Combine(output, "independent-recovery.docx");
+            store.CopySnapshotAsync(entry, independent).GetAwaiter().GetResult();
+            checks["WorkingFileChangesCannotDamageSavedRecovery"] = File.ReadAllText(independent) == "saved working snapshot";
+            using (var blockedMetadata = new FileStream(Path.Combine(directory, "session.json"), FileMode.Open, FileAccess.Read, FileShare.Read)) {
+                denied = false;
+                try { store.SnapshotSavedAsync(directory, working).GetAwaiter().GetResult(); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { denied = true; }
+                checks["FailedMetadataPublicationKeepsPreviousGeneration"] = denied && File.Exists(entry.WorkingFile);
+            }
+            var afterFailure = store.FindAsync().GetAwaiter().GetResult().Single();
+            string preserved = Path.Combine(output, "preserved-after-failure.docx");
+            store.CopySnapshotAsync(afterFailure, preserved).GetAwaiter().GetResult();
+            checks["PreviousSnapshotRemainsRecoverableAfterSaveFailure"] = afterFailure.WorkingFile == entry.WorkingFile &&
+                File.ReadAllText(preserved) == "saved working snapshot";
+            File.WriteAllText(entry.WorkingFile, "corrupt immutable snapshot");
             string corruptTarget = Path.Combine(output, "corrupt-export.docx");
             denied = false; try { store.CopySnapshotAsync(entry, corruptTarget).GetAwaiter().GetResult(); } catch (IOException) { denied = true; }
             checks["CorruptSnapshotRejectedBeforeExport"] = denied && !File.Exists(corruptTarget);
+            string legacyRoot = Path.Combine(output, "legacy-sessions"), legacyDirectory = Path.Combine(legacyRoot, Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(Path.Combine(legacyDirectory, "document"));
+            string legacyFile = Path.Combine(legacyDirectory, "document", Path.GetFileName(source));
+            File.WriteAllText(legacyFile, "previous version recovery");
+            File.WriteAllText(Path.Combine(legacyDirectory, "session.json"), JsonSerializer.Serialize(new {
+                Source = source, OpenedUtc = DateTime.UtcNow, SavedUtc = DateTime.UtcNow,
+                SnapshotSHA256 = Convert.ToHexString(Program.HashFile(legacyFile)) }));
+            var legacyStore = new OfficeRecoveryStore(legacyRoot);
+            var legacyEntry = legacyStore.FindAsync().GetAwaiter().GetResult().Single();
+            string legacyExport = Path.Combine(output, "legacy-recovered.docx");
+            legacyStore.CopySnapshotAsync(legacyEntry, legacyExport).GetAwaiter().GetResult();
+            checks["PreviousVersionRecoveryMetadataStillWorks"] = File.ReadAllText(legacyExport) == "previous version recovery";
+            legacyStore.Retire(legacyDirectory);
             string outside = Path.Combine(output, "protected-outside"); Directory.CreateDirectory(outside);
             string marker = Path.Combine(outside, "keep.txt"); File.WriteAllText(marker, "keep");
             denied = false; try { store.Retire(outside); } catch (IOException) { denied = true; }

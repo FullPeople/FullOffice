@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace FlowOfficeLab;
@@ -12,9 +14,10 @@ public sealed class OfficeRecoveryStore
     public static string DefaultRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "FullOffice", "EditingSessions");
     readonly string root;
+    readonly SemaphoreSlim snapshotGate = new(1, 1);
     public OfficeRecoveryStore(string? root = null) { this.root = Path.GetFullPath(root ?? DefaultRoot); }
     sealed record Record(string Source, DateTime OpenedUtc, int HostPid = 0, long HostStartedUtcTicks = 0,
-        DateTime? SavedUtc = null, string? SnapshotSHA256 = null);
+        DateTime? SavedUtc = null, string? SnapshotSHA256 = null, string? SnapshotFile = null);
     internal static void RejectLinks(string path)
     {
         for (var item = new DirectoryInfo(Path.GetDirectoryName(Path.GetFullPath(path))!); item != null; item = item.Parent)
@@ -45,7 +48,11 @@ public sealed class OfficeRecoveryStore
         string target = Path.Combine(directory, "session.json"), temporary = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
         RejectLinks(target);
         try {
-            await File.WriteAllTextAsync(temporary, JsonSerializer.Serialize(record));
+            await using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                4096, FileOptions.Asynchronous | FileOptions.WriteThrough)) {
+                await output.WriteAsync(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(record))).ConfigureAwait(false);
+                await output.FlushAsync().ConfigureAwait(false); output.Flush(true);
+            }
             if (File.Exists(target)) File.Move(temporary, target, true); else File.Move(temporary, target);
         } finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
@@ -58,14 +65,59 @@ public sealed class OfficeRecoveryStore
             !DocumentFormats.IsOffice(record.Source) || record.OpenedUtc == default || record.HostPid < 0 ||
             (record.SnapshotSHA256 != null && (record.SavedUtc == null || record.SnapshotSHA256.Length != 64 ||
              !record.SnapshotSHA256.All(Uri.IsHexDigit)))) throw new IOException("恢复记录缺少有效的文档信息。");
+        if (record.SnapshotFile != null && (record.SnapshotSHA256 == null || record.SnapshotFile.Length != 46 ||
+            !record.SnapshotFile.StartsWith("snapshot-", StringComparison.Ordinal) ||
+            !record.SnapshotFile.EndsWith(".data", StringComparison.Ordinal) ||
+            !Guid.TryParseExact(record.SnapshotFile.AsSpan(9, 32), "N", out _)))
+            throw new IOException("恢复快照的位置无效。");
         return record;
     }
     public async Task SnapshotSavedAsync(string directory, string workingFile)
     {
-        var record = ReadRecord(directory);
-        string hash = await Task.Run(() => Convert.ToHexString(Program.HashFile(workingFile)));
-        await WriteRecord(directory, record with { SavedUtc = DateTime.UtcNow, SnapshotSHA256 = hash });
+        await snapshotGate.WaitAsync().ConfigureAwait(false);
+        string? snapshot = null; bool published = false;
+        try {
+            directory = CheckedSession(directory); var record = ReadRecord(directory);
+            string expected = Path.Combine(directory, "document", Path.GetFileName(record.Source));
+            if (!Path.GetFullPath(workingFile).Equals(expected, StringComparison.OrdinalIgnoreCase))
+                throw new IOException("临时文档超出当前会话范围。");
+            RejectLinks(workingFile);
+            string name = "snapshot-" + Guid.NewGuid().ToString("N") + ".data";
+            snapshot = Path.Combine(directory, name); RejectLinks(snapshot);
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            await using (var input = new FileStream(workingFile, FileMode.Open, FileAccess.Read, FileShare.Read,
+                65536, FileOptions.Asynchronous))
+            await using (var output = new FileStream(snapshot, FileMode.CreateNew, FileAccess.Write, FileShare.None,
+                65536, FileOptions.Asynchronous | FileOptions.WriteThrough)) {
+                var buffer = new byte[65536]; int count;
+                while ((count = await input.ReadAsync(buffer).ConfigureAwait(false)) != 0) {
+                    hash.AppendData(buffer.AsSpan(0, count));
+                    await output.WriteAsync(buffer.AsMemory(0, count)).ConfigureAwait(false);
+                }
+                await output.FlushAsync().ConfigureAwait(false); output.Flush(true);
+            }
+            await WriteRecord(directory, record with { SavedUtc = DateTime.UtcNow,
+                SnapshotSHA256 = Convert.ToHexString(hash.GetHashAndReset()), SnapshotFile = name }).ConfigureAwait(false);
+            published = true;
+            if (record.SnapshotFile != null) {
+                string previous = Path.Combine(directory, record.SnapshotFile);
+                try { RejectLinks(previous); File.Delete(previous); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
+                    Debug.WriteLine("Previous recovery snapshot retained: " + error.Message);
+                }
+            }
+        } finally {
+            if (!published && snapshot != null) {
+                try { RejectLinks(snapshot); File.Delete(snapshot); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) {
+                    Debug.WriteLine("Uncommitted recovery snapshot retained: " + error.Message);
+                }
+            }
+            snapshotGate.Release();
+        }
     }
+    static string RecoveryFile(string directory, Record record) => record.SnapshotFile == null
+        ? Path.Combine(directory, "document", Path.GetFileName(record.Source)) : Path.Combine(directory, record.SnapshotFile);
     static bool HostAlive(Record record)
     {
         if (record.HostPid == 0) return false;
@@ -86,7 +138,7 @@ public sealed class OfficeRecoveryStore
             try {
                 using var lease = Acquire(directory); var record = ReadRecord(directory);
                 if (HostAlive(record)) continue;
-                string working = Path.Combine(directory, "document", Path.GetFileName(record.Source)); RejectLinks(working);
+                string working = RecoveryFile(directory, record); RejectLinks(working);
                 if (!File.Exists(working)) throw new IOException("临时文档已不存在。");
                 entries.Add(new(directory, record.Source, working, record.OpenedUtc, record.SavedUtc, record.SnapshotSHA256 != null));
             } catch (IOException error) when ((error.HResult & 0xffff) is 32 or 33) { }
@@ -101,12 +153,13 @@ public sealed class OfficeRecoveryStore
         RejectLinks(destination);
         using var lease = Acquire(entry.Directory); var record = ReadRecord(entry.Directory);
         if (HostAlive(record)) throw new IOException("文档编辑器仍在运行，请稍后再恢复。");
-        string working = Path.Combine(CheckedSession(entry.Directory), "document", Path.GetFileName(record.Source)); RejectLinks(working);
+        string working = RecoveryFile(CheckedSession(entry.Directory), record); RejectLinks(working);
         if (!Path.GetFullPath(entry.WorkingFile).Equals(working, StringComparison.OrdinalIgnoreCase)) throw new IOException("恢复文件位置不匹配。");
-        if (record.SnapshotSHA256 != null && !record.SnapshotSHA256.Equals(
-            await Task.Run(() => Convert.ToHexString(Program.HashFile(working))), StringComparison.Ordinal))
-            throw new IOException("恢复文件校验失败。请保留会话以便排查。");
         await using var input = new FileStream(working, FileMode.Open, FileAccess.Read, FileShare.Read, 65536, FileOptions.Asynchronous);
+        if (record.SnapshotSHA256 != null && !record.SnapshotSHA256.Equals(
+            Convert.ToHexString(await SHA256.HashDataAsync(input)), StringComparison.Ordinal))
+            throw new IOException("恢复文件校验失败。请保留会话以便排查。");
+        input.Position = 0;
         await using var output = new FileStream(destination, FileMode.CreateNew, FileAccess.Write, FileShare.None, 65536, FileOptions.Asynchronous);
         await input.CopyToAsync(output); await output.FlushAsync();
     }

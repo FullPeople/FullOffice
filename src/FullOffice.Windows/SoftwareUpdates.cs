@@ -17,7 +17,9 @@ public sealed partial class WorkspaceWindow
         {
             var start = new ProcessStartInfo(helper) { UseShellExecute = false, CreateNoWindow = true };
             start.ArgumentList.Add("--product"); start.ArgumentList.Add("FullOffice");
-            start.ArgumentList.Add("--version"); start.ArgumentList.Add("0.2.0");
+            var version = typeof(WorkspaceWindow).Assembly.GetName().Version
+                ?? throw new IOException("无法读取当前程序版本。");
+            start.ArgumentList.Add("--version"); start.ArgumentList.Add($"{version.Major}.{version.Minor}.{version.Build}");
             if (background) start.ArgumentList.Add("--background");
             using var process = Process.Start(start);
         }

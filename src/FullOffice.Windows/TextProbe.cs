@@ -38,6 +38,13 @@ public sealed partial class WorkspaceWindow
             checks["RejectedSaveRetainsEditorChanges"] = view.IsModified && view.DocumentText.Contains("保留未保存的内容") && saved.SequenceEqual(await File.ReadAllBytesAsync(path));
             File.SetAttributes(path, File.GetAttributes(path) & ~FileAttributes.ReadOnly);
             checks["FailedSaveCanRetry"] = await view.SaveAsync();
+            view.DocumentText += "关闭时等待正在保存的内容";
+            var pendingSave = view.SaveAsync();
+            checks["CloseRequestedDuringActualSave"] = view.IsSaving;
+            var closeDecision = view.ConfirmClose();
+            checks["CloseWaitsForPendingSave"] = !closeDecision.IsCompleted;
+            checks["CloseContinuesAfterDurableSave"] = await closeDecision && await pendingSave && !view.IsModified &&
+                (await File.ReadAllTextAsync(path)).Contains("关闭时等待正在保存的内容");
             view.DocumentText += "外部修改冲突"; await File.AppendAllTextAsync(path, "outside change");
             checks["ExternalModificationRejected"] = !await view.SaveAsync() && view.IsModified && (await File.ReadAllTextAsync(path)).EndsWith("outside change");
             File.WriteAllText(Path.Combine(directory, "text-probe.json"), JsonSerializer.Serialize(new { Passed = checks.Values.All(v => v), Checks = checks }, new JsonSerializerOptions { WriteIndented = true }));
