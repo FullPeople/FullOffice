@@ -16,6 +16,7 @@ static std::mutex outputMutex;
 static std::atomic<bool> keyboardPending{false};
 static bool editProbe = false;
 static std::atomic<bool> documentReady{false}, savedObserved{false};
+static std::wstring lastProbeState;
 static void emit(const std::string& text) { std::lock_guard<std::mutex> lock(outputMutex); std::cout << text << std::endl; }
 static std::wstring officeWideString(NSString* value) {
     NSData* bytes = [value dataUsingEncoding:NSUTF32LittleEndianStringEncoding];
@@ -37,6 +38,11 @@ public:
                 auto* data = static_cast<NSEditorApi::CAscExecCommand*>(event->m_pData);
                 if (data->get_Command() == L"FullOffice.Probe.Ready" && data->get_Param() == L"1") {
                     if (!documentReady.exchange(true)) emit("DOCUMENT_CONTENT_READY");
+                }
+                if (data->get_Command() == L"FullOffice.Probe.State" && data->get_Param() != lastProbeState) {
+                    lastProbeState = data->get_Param();
+                    NSString* state = [[NSString alloc] initWithBytes:lastProbeState.data() length:lastProbeState.size()*sizeof(wchar_t) encoding:NSUTF32LittleEndianStringEncoding];
+                    emit(std::string("READINESS_STATE ") + ([state UTF8String] ?: "decode-error"));
                 }
             }
             if (event->m_nType == ASC_MENU_EVENT_TYPE_CEF_MODIFY_CHANGED && event->m_pData) {
@@ -110,9 +116,10 @@ static void inputProbeCharacter(NSString* text, NSUInteger index) {
         if (++readinessTicks > 75) { emit("DOCUMENT_READY_TIMEOUT"); [timer invalidate]; return; }
         if (!documentReady) {
             // Observe real editor state; never change document content through JavaScript.
-            editor->ExecuteInAllFrames("(function(){var e=(window.Asc&&window.Asc.editor)||window.editor;"
-                "if(e&&e.isDocumentLoadComplete===true&&window.AscDesktopEditor)"
-                "window.AscDesktopEditor.execCommand('FullOffice.Probe.Ready','1');})();", true);
+            editor->ExecuteInAllFrames("(function(){var a=window.Asc&&window.Asc.editor,b=window.editor,c=window.AscCommon&&window.AscCommon.editor;"
+                "if(!window.AscDesktopEditor)return;var e=a||b||c;"
+                "window.AscDesktopEditor.execCommand('FullOffice.Probe.State',JSON.stringify({asc:typeof a,editor:typeof b,common:typeof c,complete:e&&e.isDocumentLoadComplete}));"
+                "if(e&&e.isDocumentLoadComplete===true)window.AscDesktopEditor.execCommand('FullOffice.Probe.Ready','1');})();", true);
             return;
         }
         if (inputStarted) return;
