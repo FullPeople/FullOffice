@@ -74,4 +74,22 @@ def exercise(app,out,root):
         checks['ActualOfficeBodyRendered']=recognition.returncode==0
     report={'Passed':len(checks)==4 and all(checks.values()),'Checks':checks,'HostExitCode':code,'OwnedPid':process.pid,'Scope':'Actual native ONLYOFFICE Mac interface and converter, generated DOCX body capture; no Office editing/save or final FullOffice integration claim.'}
     (out/'native-host-report.json').write_text(json.dumps(report,indent=2));print(json.dumps(report),flush=True)
-    if not report['Passed']:raise RuntimeError('Actual native Office Mac window validation failed')
+    if not report['Passed']:
+        # Independent upstream application control: same signed read-only bundle,
+        # same authored document and desktop; this cannot make the host pass.
+        if __import__('os').environ.get('GITHUB_ACTIONS')!='true':
+            raise RuntimeError('Upstream reference requires the disposable hosted runner')
+        with (out/'upstream-reference.log').open('wb') as log:
+            reference=subprocess.Popen([str(app/'Contents/MacOS/ONLYOFFICE'),str(fixture)],stdout=log,stderr=subprocess.STDOUT)
+            time.sleep(40)
+            if reference.poll() is None:
+                capture=subprocess.run(['xcrun','swift',str(root/'tools/mac_office_reference.swift'),str(reference.pid),str(app),str(out/'upstream-reference-window.png')],capture_output=True,text=True,timeout=60)
+                (out/'upstream-reference-control.json').write_text(json.dumps({'ExitCode':capture.returncode,'Stdout':capture.stdout,'Stderr':capture.stderr},indent=2))
+                try:reference.wait(timeout=15)
+                except subprocess.TimeoutExpired:reference.kill();reference.wait(timeout=15)
+        result={'OwnedPid':reference.pid,'ExitCode':reference.returncode,'OriginalAuthorDocumentUnchanged':hashlib.sha256(fixture.read_bytes()).hexdigest()==original,
+            'Scope':'Official signed upstream application control on the same authored document; not FullOffice acceptance'}
+        if (out/'upstream-reference-window.png').is_file():
+            result['UpstreamBodyRendered']=subprocess.run(['xcrun','swift',str(root/'tools/mac_office_ocr.swift'),str(out/'upstream-reference-window.png'),str(out/'upstream-recognized-document.json')],timeout=90).returncode==0
+        (out/'upstream-reference-report.json').write_text(json.dumps(result,indent=2))
+        raise RuntimeError('Actual native Office Mac window validation failed; independent upstream control recorded')
