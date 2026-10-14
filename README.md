@@ -4,7 +4,7 @@ FullOffice 是正在开发的桌面办公软件。Windows 0.3.5 完整开发包�
 
 [Windows 安装版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.5/FullOffice-0.3.5-Setup-windows-x64.exe) · [Windows 便携版](https://github.com/FullPeople/FullOffice/releases/download/v0.3.5/FullOffice-0.3.5-windows-x64.zip) · [Apple 芯片 Mac 候选](https://github.com/FullPeople/FullOffice/releases/download/v0.3.6/FullOffice-0.3.6-Setup-macos-arm64.pkg) · [Intel Mac 候选](https://github.com/FullPeople/FullOffice/releases/download/v0.3.6/FullOffice-0.3.6-Setup-macos-x64.pkg) · [官网](https://dnd.center/)。重要文件建议先用副本试用；开发版的样例检查不等于所有文档的兼容性。已复现的恢复记录清理缺陷已修复并通过真实文件锁与异常退出检查；偶发原生编辑器空白仍在调查。
 
-Windows 0.3.5 已公开为开发版。最终完整包的安装后编辑、常见格式及普通升级共 60 项，三份本机 PDF 的相同 UI 检查 72 项通过；实际公网签名升级 14 项和便携包完整摘要 2 项另列。Mac 0.3.6 已作为补丁开发版公开，修复旧版升级时备份记录漏列版本化 Framework 文件的问题；两架构应用、安装与实际 0.3.5→0.3.6 升级共 542 项通过，全部旧文件与链接独立核对。详情见 [Mac 匿名验收汇总](https://github.com/FullPeople/FullOffice/releases/download/v0.3.6/acceptance-summary.json)。Mac 功能范围较窄，安装包尚未取得 Developer ID 签名或公证；真实更新菜单操作仍在单独验证，这些结果不代表全部文档或实体设备验收。
+Windows 0.3.5 已公开为开发版。最终完整包的安装后编辑、常见格式及普通升级共 60 项，三份本机 PDF 的相同 UI 检查 72 项通过；实际公网签名升级 14 项和便携包完整摘要 2 项另列。Mac 0.3.6 已作为补丁开发版公开，修复旧版升级时备份记录漏列版本化 Framework 文件的问题；两架构应用与安装共 516 项通过。随后两架构实际已安装的公开旧应用操作更新菜单、完整下载、未保存内容保护和系统安装程序交接，各 14 项共 28 项通过；使用实际下载的新包升级、全部旧备份独立核对和卸载，各 13 项共 26 项通过。详情见 [真实公网菜单与升级验证](https://github.com/FullPeople/FullOffice/actions/runs/38498161758)。Mac 功能范围较窄，安装包尚未取得 Developer ID 签名或公证；这些结果不代表全部文档或实体设备验收。
 
 ## Windows 当前可运行的能力
 
@@ -32,7 +32,7 @@ Windows 0.3.5 已公开为开发版。最终完整包的安装后编辑、常见
 | ODT、ODS、ODP、RTF、CSV | 0.3.5 完整包的五格式保存、RTF 中文重开及异常退出恢复共 29 项检查通过；更多文档及偶发问题仍在验收 |
 | Windows 安装、卸载和默认应用候选注册 | 已实现，自包含安装包通过独立安装与卸载检查 |
 | 更新检查、下载校验和安装界面 | Windows 0.3.5 普通升级 10 项、签名公网升级 14 项及公开两包全文摘要核验通过，涵盖实际完整下载、运行中保护、同根安装、设置和默认选择保留、最新检测、卸载与缓存清理 |
-| macOS 包体 | 两种架构 0.3.6 候选已公开，应用、安装与旧版升级共 542 项通过。真实更新菜单与 PDF 功能补齐继续进行，范围见 [macOS 验证记录](docs/macos-preview.md) |
+| macOS 包体 | 两种架构 0.3.6 候选已公开，应用与安装 516 项、真实公网更新菜单 28 项和下载后升级 26 项通过。PDF 功能补齐继续进行，范围见 [macOS 验证记录](docs/macos-preview.md) |
 
 新建、PPTX、中文识别与默认格式的范围和实际验证见 [本轮验证记录](docs/validation/2026-10-13-new-documents-and-ocr.md)。
 
