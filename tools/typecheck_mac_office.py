@@ -11,7 +11,8 @@ subprocess.run(['xcrun','swiftc','-typecheck','-swift-version','5',*swift_target
 for name in ['ProcessOfficeProbe.swift','mac_office_session_checks.swift','mac_recovery_ui_fixture.swift','InstallGuard.swift','mac_recycle_installed.swift']:
     original=sources/name if name in ['ProcessOfficeProbe.swift','InstallGuard.swift'] else root/'tools'/name
     case=work/name;case.mkdir();shutil.copy2(original,case/'main.swift')
-    subprocess.run(['xcrun','swiftc','-typecheck','-swift-version','5',*swift_target(),*shared,str(case/'main.swift')],check=True,timeout=90)
+    dependencies=[str(sources/'InstallManifest.swift')] if name=='InstallGuard.swift' else shared
+    subprocess.run(['xcrun','swiftc','-typecheck','-swift-version','5',*swift_target(),*dependencies,str(case/'main.swift')],check=True,timeout=90)
 subprocess.run(['xcrun','clang++','-fsyntax-only','-std=c++17','-fblocks','-mmacosx-version-min=13.0','-D_MAC','-DDESKTOP_NO_USE_DYNAMIC_LIBRARY','-DQ_DECL_EXPORT=',
     '-I'+str(root/'src/FullOffice.OfficeEngine.Native/third_party/desktop-sdk/ChromiumBasedEditors/lib/include'),
     str(root/'src/FullOffice.OfficeEngine.Native/MacOfficeHost.mm')],check=True,timeout=90)
