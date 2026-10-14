@@ -24,6 +24,8 @@ jobs:
         run: python3 tools/typecheck_mac_office.py
       - name: Exercise file replacement and retained-snapshot recovery
         run: python3 tools/verify_mac_office_sessions.py
+      - name: Record every framework version and refuse changed backup contents
+        run: python3 tools/verify_mac_install_manifest.py
       - name: Verify publisher signatures and streamed update fault responses
         run: python3 tools/verify_mac_updates.py
       - name: Build the native UI test runner before runtime download
@@ -59,6 +61,7 @@ jobs:
             artifacts/mac-text-ui/
             artifacts/mac-package/package.json
             artifacts/mac-install-checks/
+            artifacts/mac-install-manifest/fixture/report.json
             artifacts/macos-full/bundle-manifest.json
             artifacts/macos-full/*-load-commands.txt
           if-no-files-found: warn

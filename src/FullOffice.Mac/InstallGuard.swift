@@ -16,7 +16,9 @@ func manifest(_ root: URL) throws -> [String:String] {
         let relative=String(file.path.dropFirst(root.path.count+1))
         switch attributes[.type] as? FileAttributeType {
         case .typeRegular: result[relative]="file:"+(try hash(file))
-        case .typeSymbolicLink: result[relative]="link:"+(try files.destinationOfSymbolicLink(atPath:file.path)); iterator.skipDescendants()
+        // DirectoryEnumerator already avoids following links. Skipping again can
+        // suppress the next real framework directory and omit its versioned files.
+        case .typeSymbolicLink: result[relative]="link:"+(try files.destinationOfSymbolicLink(atPath:file.path))
         case .typeDirectory: break
         default: throw NSError(domain:"FullOfficeInstall",code:2,userInfo:[NSLocalizedDescriptionKey:"应用内存在无法备份的特殊文件。"])
         }
@@ -29,6 +31,7 @@ func running(_ arguments: [String]) throws -> Bool {
     try process.run();process.waitUntilExit()
     return process.terminationStatus==0
 }
+#if !FULL_OFFICE_INSTALL_MANIFEST_TEST
 do {
     // Installer scripts pass the destination volume as their third argument.
     guard CommandLine.arguments.count==2,CommandLine.arguments[1]=="/" else {
@@ -72,3 +75,4 @@ do {
     }
     print("FullOffice installation preflight passed")
 } catch {fputs(error.localizedDescription+"\n",stderr);exit(1)}
+#endif
