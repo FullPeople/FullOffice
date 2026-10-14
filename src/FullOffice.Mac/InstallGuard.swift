@@ -1,37 +1,12 @@
 import Foundation
 import CryptoKit
 
-func hash(_ url: URL) throws -> String {
-    let stream = try FileHandle(forReadingFrom: url); defer {try? stream.close()}
-    var digest = SHA256()
-    while let bytes = try stream.read(upToCount:65536), !bytes.isEmpty {digest.update(data:bytes)}
-    return digest.finalize().map{String(format:"%02x",$0)}.joined()
-}
-func manifest(_ root: URL) throws -> [String:String] {
-    let files=FileManager.default
-    guard let iterator=files.enumerator(at:root,includingPropertiesForKeys:nil) else {throw NSError(domain:"FullOfficeInstall",code:1)}
-    var result=[String:String]()
-    for case let file as URL in iterator {
-        let attributes=try files.attributesOfItem(atPath:file.path)
-        let relative=String(file.path.dropFirst(root.path.count+1))
-        switch attributes[.type] as? FileAttributeType {
-        case .typeRegular: result[relative]="file:"+(try hash(file))
-        // DirectoryEnumerator already avoids following links. Skipping again can
-        // suppress the next real framework directory and omit its versioned files.
-        case .typeSymbolicLink: result[relative]="link:"+(try files.destinationOfSymbolicLink(atPath:file.path))
-        case .typeDirectory: break
-        default: throw NSError(domain:"FullOfficeInstall",code:2,userInfo:[NSLocalizedDescriptionKey:"应用内存在无法备份的特殊文件。"])
-        }
-    }
-    return result
-}
 func running(_ arguments: [String]) throws -> Bool {
     let process=Process();process.executableURL=URL(fileURLWithPath:"/usr/bin/pgrep");process.arguments=arguments
     process.standardOutput=FileHandle.nullDevice;process.standardError=FileHandle.nullDevice
     try process.run();process.waitUntilExit()
     return process.terminationStatus==0
 }
-#if !FULL_OFFICE_INSTALL_MANIFEST_TEST
 do {
     // Installer scripts pass the destination volume as their third argument.
     guard CommandLine.arguments.count==2,CommandLine.arguments[1]=="/" else {
@@ -75,4 +50,3 @@ do {
     }
     print("FullOffice installation preflight passed")
 } catch {fputs(error.localizedDescription+"\n",stderr);exit(1)}
-#endif
