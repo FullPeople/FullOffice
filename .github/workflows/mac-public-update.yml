@@ -1,4 +1,4 @@
-name: Exact Mac 0.3.5 to 0.3.6 backup upgrade acceptance
+name: Actual published Mac update menu and complete native upgrade
 on:
   workflow_dispatch:
 permissions:
@@ -11,7 +11,7 @@ jobs:
       matrix:
         runner: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 25
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Fetch actual public baseline and exact successful candidate
@@ -20,8 +20,9 @@ jobs:
         run: |
           gh release download v0.3.5 --pattern 'FullOffice-0.3.5-Setup-macos-*.pkg' --dir artifacts/upgrade-baseline
           gh run download 38479807095 --name mac-product-${{ matrix.runner }}-38479807095 --dir artifacts/upgrade-baseline-reports
-          gh run download 38491145204 --name mac-installer-${{ matrix.runner }}-38491145204 --dir artifacts/upgrade-candidate
           gh run download 38491145204 --name mac-product-${{ matrix.runner }}-38491145204 --dir artifacts/upgrade-candidate-reports
+      - name: Operate real published update menu download document guard and system Installer
+        run: python3 tools/run_mac_update_ui.py
       - name: Verify actual upgrade and every previous backup file
         run: python3 tools/verify_mac_installer_upgrade.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -32,4 +33,7 @@ jobs:
             artifacts/mac-upgrade-036/*.json
             artifacts/mac-upgrade-036/*.log
             artifacts/mac-upgrade-036/pdf-ui/
+            artifacts/mac-public-update-ui/*.json
+            artifacts/mac-public-update-ui/*.png
+            artifacts/mac-public-update-ui/*.log
           if-no-files-found: warn
