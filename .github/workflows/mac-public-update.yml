@@ -1,4 +1,4 @@
-name: Public signed Mac package and native upgrade
+name: Exact Mac 0.3.5 to 0.3.6 backup upgrade acceptance
 on:
   workflow_dispatch:
 permissions:
@@ -11,25 +11,25 @@ jobs:
       matrix:
         runner: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 40
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Fetch immutable actual previous package and bundle manifests
+      - name: Fetch actual public baseline and exact successful candidate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download 38475919819 --name mac-installer-${{ matrix.runner }}-38475919819 --dir artifacts/mac-update-baseline
-          gh run download 38475919819 --name mac-product-${{ matrix.runner }}-38475919819 --dir artifacts/mac-update-baseline-reports
-          gh run download 38479807095 --name mac-product-${{ matrix.runner }}-38479807095 --dir artifacts/mac-update-candidate-reports
-      - name: Exercise production public download and native installed upgrade
-        run: python3 tools/verify_mac_public_update.py
+          gh release download v0.3.5 --pattern 'FullOffice-0.3.5-Setup-macos-*.pkg' --dir artifacts/upgrade-baseline
+          gh run download 38479807095 --name mac-product-${{ matrix.runner }}-38479807095 --dir artifacts/upgrade-baseline-reports
+          gh run download 38491145204 --name mac-installer-${{ matrix.runner }}-38491145204 --dir artifacts/upgrade-candidate
+          gh run download 38491145204 --name mac-product-${{ matrix.runner }}-38491145204 --dir artifacts/upgrade-candidate-reports
+      - name: Verify actual upgrade and every previous backup file
+        run: python3 tools/verify_mac_installer_upgrade.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: mac-public-update-${{ matrix.runner }}-${{ github.run_id }}
+          name: mac-upgrade-036-${{ matrix.runner }}-${{ github.run_id }}
           path: |
-            artifacts/mac-public-update/*.json
-            artifacts/mac-public-update/*.log
-            artifacts/mac-public-update/public.manifest
-            artifacts/mac-public-update/installed-pdf-ui/
+            artifacts/mac-upgrade-036/*.json
+            artifacts/mac-upgrade-036/*.log
+            artifacts/mac-upgrade-036/pdf-ui/
           if-no-files-found: warn
