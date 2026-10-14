@@ -51,6 +51,13 @@ try:
     # InstallGuard records every old file/link and verifies the actual backup internally.
     expected={name:'file:'+value['SHA256'] for name,value in old_bundle['Files'].items()}
     expected.update({name:'link:'+target for name,target in old_bundle['Links'].items()})
+    recorded=record.get('Files',{})
+    comparison={'ReceiptCount':len(new_receipts),'Target':record.get('Target'),'ExpectedTarget':str(app),
+        'ExpectedEntries':len(expected),'RecordedEntries':len(recorded),
+        'Missing':sorted(set(expected)-set(recorded)), 'Extra':sorted(set(recorded)-set(expected)),
+        'Changed':[{'Path':name,'Expected':value,'Recorded':recorded.get(name)} for name,value in expected.items() if name in recorded and recorded[name]!=value],
+        'Backup':record.get('Backup'),'Scope':'Unmodified backup assertion diagnostics; actual built baseline manifest and actual installer receipt, no user files.'}
+    (out/'backup-comparison.json').write_text(json.dumps(comparison,indent=2))
     checks['UpgradeRetainsVerifiedActualPreviousAppBackup']=len(new_receipts)==1 and record.get('Files')==expected and record.get('Target')==str(app)
     checks['ActualInstalledBundleSignatureValid']=subprocess.run(['codesign','--verify','--deep','--strict',str(app)],capture_output=True,timeout=90).returncode==0
     checks['RecoveryDataAndSettingsSurviveUpgrade']=sha(sentinel)==sentinel_hash
