@@ -48,7 +48,7 @@ final class UpdateUITests: XCTestCase {
             let action = app.menuItems["检查更新…"]
             try expect(prefix + "ActualCheckUpdateMenu", action.waitForExistence(timeout: 10)); action.click()
             let offer = app.dialogs.buttons["下载更新"]
-            let version = app.dialogs.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "0.3.6")).firstMatch
+            let version = app.dialogs.staticTexts.matching(NSPredicate(format: "value CONTAINS %@", "FullOffice 0.3.6")).firstMatch
             try expect(prefix + "ActualSignedPublished036Offer", offer.waitForExistence(timeout: 75) && version.exists)
             let previous = Set((try? FileManager.default.subpathsOfDirectory(atPath: packageRoot.path)) ?? [])
             offer.click()
