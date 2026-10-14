@@ -17,6 +17,11 @@ final class UpdateUITests: XCTestCase {
         let report: [String: Any] = ["Passed": checks.count == 14 && checks.values.allSatisfy { $0 }, "Checks": checks,
             "Scope": "Actual installed published 0.3.5 app menu, production signed public 0.3.6 discovery/full download, active-document guard, preserved original and system Installer handoff through XCTest. Native installed upgrade is separate; no physical/Gatekeeper/authentication claim."]
         try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted, .sortedKeys]).write(to: output.appendingPathComponent("report.json"))
+        if !value {
+            let actual = XCUIApplication(bundleIdentifier: "center.dnd.FullOffice")
+            try actual.screenshot().pngRepresentation.write(to: output.appendingPathComponent(name + "-failure.png"))
+            try actual.debugDescription.write(to: output.appendingPathComponent(name + "-failure.log"), atomically: true, encoding: .utf8)
+        }
         XCTAssertTrue(value, name)
         if !value { throw NSError(domain: "UpdateUI", code: 1, userInfo: [NSLocalizedDescriptionKey: name]) }
     }
